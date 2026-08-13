@@ -109,11 +109,12 @@ result = list(
 
 ```r
 result = input |>
-  group_by(across(everything())) |>
-  filter(n() > 1) |>
   summarise(n = n(), .by = everything()) |>
+  filter(n > 1) |>
   arrange(desc(n))
 ```
+
+> 用 `.by` 单次分组（不触发 dplyr 分组信息消息，避免污染 stdout JSON）；勿用 `group_by()`。
 
 ### 列名蛇形命名（需 `janitor`）
 
