@@ -152,16 +152,17 @@ result = input |>
 ```r
 result = input |>
   mutate(
-    date = lubridate::parse_date_time(
+    date_parsed = lubridate::parse_date_time(
       date_raw,
       orders = c("Y/m/d", "Y-m-d", "Ymd"),
       quiet  = TRUE
     ) |>
-      as.Date()
+      as.Date(),
+    date_parse_fail = is.na(date_parsed) & !is.na(date_raw)
   )
 ```
 
-> `orders` 给出所有可能格式；解析失败得 `NA`（保留原字段、新增解析字段 + 失败 flag 更稳）。
+> `orders` 给出所有可能格式；**保留原字段 `date_raw`，新增解析字段 `date_parsed` + 失败 flag `date_parse_fail`**（解析失败得 `NA`），不覆盖原列。
 
 ### 缺失值填补（示例，不可盲用）
 
