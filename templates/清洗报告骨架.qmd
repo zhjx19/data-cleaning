@@ -1,0 +1,244 @@
+---
+title: "数据清洗报告"
+subtitle: "一屏看懂脏在哪 · 逐项清洗(代码/结果/说明) · 整洁数据与总结"
+author: ""
+format:
+  typst:
+    toc: true
+
+date: "@@@@@-@@-@@"
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+<!-- 声明约定：
+  1. 写完本 .qmd 与任何 .R 脚本后，先剥 UTF-8 BOM 再 `quarto render <文件>.qmd`；
+     否则 Rscript / YAML 会因 BOM 报错。
+  2. R 风格铁律：
+       - 赋值用 =，禁用 <-
+       - 管道用 |>，禁用 %>%
+       - 匿名函数用 \(x)，禁用 function(x)
+       - 分组优先 .by
+       - 禁用 ifelse / merge / gather / spread
+  3. 两张以上图并排用 gridExtra::grid.arrange(p1, p2, ncol = 2)；
+     勿用 (p1 | p2)，否则提示缺 patchwork。
+  4. 流程：先审计 -> 逐项清洗 -> 异常打标不删除 -> 输出整洁数据 + 总结；
+     raw 只读用于前后对照。 -->
+
+# 数据清洗报告
+
+本报告由 **data-cleaning skill（opencode + R tidyverse）** 生成。
+
+流水线：**概览诊断 → 逐项清洗（代码/结果/说明） → 整洁数据 → 总结**。
+
+数据来源：**原始数据**（`raw` 只读，所有改动作在 `clean` 副本上完成）。
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  fig.width  = 6.6,
+  fig.height = 3.5,
+  out.width  = "100%",
+  fig.align  = "center"
+)
+
+library(tidyverse)
+library(janitor)   # make_clean_names
+library(gridExtra) # grid.arrange
+
+# NA 与空白（trimws==""）一并计为缺失
+miss_cnt = function(df) {
+  vapply(
+    names(df),
+    \(col) sum(is.na(df[[col]]) |
+      (is.character(df[[col]]) & trimws(df[[col]]) == "")),
+    integer(1)
+  )
+}
+
+raw   = readr::read_csv("data.csv", show_col_types = FALSE)
+clean = raw
+```
+
+## 概览 · 一屏看懂
+
+### 数据信息
+
+| 源        | 清洗前                   | 清洗后                   | 输出                 |
+|-----------|--------------------------|--------------------------|----------------------|
+| `data.csv`| `r nrow(raw)` 行×`r ncol(raw)` 列 | `r nrow(clean)` 行×`r ncol(clean)` 列 | `cleaned_xxx.csv` |
+
+### 脏在哪 · 诊断总表
+
+> 「规模」由 §1 用代码算出后回填；「位置/样例」「处置」依数据实情填写。
+
+| # | 脏在哪        | 位置/样例                 | 规模 | 处置                          |
+|---|---------------|---------------------------|----:|-------------------------------|
+| 1 | 缺失/空白     | 如 `Email` 空白 4         |    — | 有默认值就补，其余留 NA        |
+| 2 | 完全重复行    | 两行全同                  |    — | `distinct()` 删除             |
+| 3 | 主键重复      | 同 key 两次录入           |    — | 保留首条 + 打标，不静默删      |
+| 4 | 取值不合理    | 如年龄 199 / 240          |    — | 打标，不删                    |
+| 5 | 负值        | 如金额 -120               |    — | 打标，不删                    |
+| 6 | 离群值      | IQR 1.5 × 之外            |    — | 打标，不删                    |
+| 7 | 类别混杂      | `A / a / 甲`              |    — | `case_when()` 归并            |
+| 8 | 分类含 NA    | `case_when` 吞 NA         |    — | 注明业务假设                  |
+| 9 | 日期多格式   | `Y/m/d`、`Y-m-d`、`Ymd`  |    | `parse_date_time(orders=…)`   |
+| 10| 列名不规范    | 空格 / 连字符             |    | `make_clean_names()`          |
+
+> 主线：**先看懂「脏在哪」，再逐项清洗并保留证据（异常打标），最后交付整洁数据 + 前后对照总结**。
+
+## 1. 脏数据诊断（自动，不改数据）
+
+`miss_cnt()` 把 `NA` 与 `trimws()==""` 的空串/空白一并计为缺失，避免"假值"。
+
+```{r}
+miss_tbl = data.frame(
+  字段 = names(raw),
+  缺失 = unname(miss_cnt(raw))
+) |>
+  arrange(desc(缺失))
+
+miss_tbl |>
+  filter(缺失 > 0) |>
+  knitr::kable(format = "pipe", caption = "缺失 / 空白")
+```
+
+```{r}
+miss_tbl |>
+  filter(缺失 > 0) |>
+  ggplot(aes(x = reorder(字段, 缺失), y = 缺失)) +
+    geom_col(fill = "#c0392b") +
+    coord_flip() +
+    labs(x = NULL, y = "缺失 / 空白数")
+```
+
+再用 `unique()`、`summary()`、`duplicated()` 逐一确认：分类取值、日期格式、
+异常取值范围、重复（含主键）、带空格 / 连字符的列名——**回填「概览」总表**。
+
+## 2. 逐项清洗（代码 + 结果 + 说明）
+
+> 一次只做一类脏；每步给出「代码」「结果」「说明（含业务假设）」。
+> 适当时在下方补一个可读的「结果」：`knitr::kable(...)` 概览或 `count()` 表。
+
+### 2.1 列名 → snake_case
+
+**代码**
+
+```{r}
+clean = clean |>
+  rename_with(\(x) janitor::make_clean_names(x, case = "snake"))
+```
+
+**说明**：去掉空格 / 连字符、统一小写下划线，为后续编程式访问列名铺路。
+
+### 2.2 文本清理：去空格、空串置 NA
+
+**代码**
+
+```{r}
+uchar = function(x) {
+  na_if(stringr::str_squish(x), "")
+}
+clean = clean |>
+  mutate(across(where(is.character), uchar))
+```
+
+**说明**：空串 `""` / `" "` 转 `NA`；`str_squish` 去首尾（多重）空格，避免"假空白"。
+
+### 2.3 类别标准化 + 日期统一
+
+**代码**
+
+```{r}
+clean = clean |>
+  mutate(
+    category = case_when(
+      toupper(category) == "A"          ~ "A",
+      category %in% c("B", "b")         ~ "B",
+      TRUE                              ~ "其他"
+    )
+  ) |>
+  mutate(
+    date = lubridate::parse_date_time(
+      date_raw,
+      orders = c("Y/m/d", "Y-m-d", "Ymd"),
+      quiet  = TRUE
+    ) |>
+      as.Date()
+  )
+```
+
+**结果**：
+
+```{r}
+clean |>
+  count(category) |>
+  knitr::kable(format = "pipe", caption = "规整后分类")
+```
+
+**说明**：`case_when()` 的 `TRUE ~ "其他"` 会把 `NA` 一起吞成默认值——**业务假设**，须记入总结「遗留」。
+
+### 2.4 异常打标（只标不删）
+
+**代码**
+
+```{r}
+clean = clean |>
+  mutate(
+    flag_unrealistic = !is.na(value) & (value < 0 | value > 120)
+  )
+
+q = quantile(clean$value_spent, c(0.25, 0.75), na.rm = TRUE)
+i = IQR(clean$value_spent, na.rm = TRUE)
+
+clean = clean |>
+  mutate(
+    flag_outlier = !is.na(value_spent) &
+      (value_spent < q[[1]] - 1.5 * i |
+       value_spent > q[[2]] + 1.5 * i)
+  )
+```
+
+**说明**：`!is.na()` 保护；`flag_*` 保留原值供复核，不删除。
+
+### 2.5 去重与主键打标
+
+**代码**
+
+```{r}
+clean = clean |>
+  distinct() |>
+  mutate(dup_record = duplicated(business_key)) |>
+  arrange(business_key)
+```
+
+**说明**：完全重复行删除；同 `business_key` 第二次出现标 `TRUE`，保留首条不静默删。
+
+## 3. 整洁数据
+
+```{r}
+clean |>
+  head(8) |>
+  knitr::kable(format = "pipe", caption = "清洗后前 8 行")
+```
+
+## 4. 清洗总结（前后对照 + 日志）
+
+| 指标         | 清洗前                  | 清洗后                   |
+| ------------ | ----------------------- | ------------------------ |
+| 行数         | `r nrow(raw)`           | `r nrow(clean)`          |
+| 列数         | `r ncol(raw)`           | `r ncol(clean)`          |
+| 缺失单元格   | `r sum(miss_cnt(raw))`  | `r sum(miss_cnt(clean))` |
+
+### 做了什么（一句话清单）
+
+- 审计出 N 类脏：缺失 / 重复 / 主键重复 / 异常 / 负值 / 离群 / 类别 / 日期 / 列名
+- 清洗顺序：列名 → 文本 → 类别 + 日期 → 异常打标 → 去重
+- 原则：异常只打标、缺失仅在业务确认后补、原始不覆盖、每步留证据
+
+### 数据字典 / 日志 / 遗留
+
+- **数据字典**：各字段类型见 `str(clean)`；缺失情况见 §3
+- **清洗日志**：在代码块内逐条 `# 字段 | 规则 | 影响行 | 业务假设`
+- **遗留**：异常复核 · NA 补采 · `TRUE ~ 默认` 的假设 · 主键唯一约束建议
