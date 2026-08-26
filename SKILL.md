@@ -72,7 +72,6 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 ## 标准工作流
 
 ### 单文件
-
 1. 读数据，**只做结构审计，不立即清洗**。
 2. 输出审计摘要：行列数、列名、类型、缺失数/率、完全重复行数、主键唯一性、数值范围、分类 Top 值、日期范围。
 3. 依审计结果形成问题清单；命中「默认决策表」中需确认的高风险项（主键不明/重复、N:N、口径冲突、异常值删除、大量缺失删除）**必须暂停确认**（总原则 #6）——用户催办或一句"直接处理/别问"授权**不豁免**高风险确认；仅低风险项（全空行/列、空白文本、标准格式统一等）可按默认处理。
@@ -89,129 +88,37 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 5. `N:N` 默认停止并提示风险；先聚合/去重/补主键再连。
 6. 连接后验证行数是否膨胀、未匹配键、新增缺失、重复列后缀。
 
-## 直接可用的片段
+## 技能协作（reshape / 分组 / 累计范式兜底）
 
-### 审计：结构 + 缺失 + 重复 + 异常值
+清洗常涉及结构转换与分组计算，本 skill 专注"审计—清洗—交付"；**需要 reshape / 分组 / 累计等数据思维时，加载 `tidy-data` 技能取 8 范式代码兜底**：
 
-```r
-result = list(
-  shape = list(rows = nrow(input), cols = ncol(input)),
-  missing = input |>
-    summarise(across(everything(), \(x) sum(is.na(x)))) |>
-    pivot_longer(everything(), names_to = "column", values_to = "na_count") |>
-    mutate(na_pct = round(na_count / nrow(input) * 100, 2)) |>
-    arrange(desc(na_count)),
-  duplicate_rows = sum(duplicated(input))
-)
-```
+- 宽表按主键折叠 / 长宽互转 → tidy-data 范式1（`pivot_longer` / `pivot_wider`）；
+- 按组清洗（组内填充、组内去重、组级筛全缺失组）→ 范式2 / 3 / 4；
+- 行数变化的分组变换（按组连接 / 建模 / 读文件）→ 范式5 `nest + map`；
+- 累计 / 滚动（累计去重、滚动去异常）→ 范式6 `accumulate` / 范式7 `slide`；
+- 非等连接（时间窗口 join、档位匹配）→ 范式8 `join_by(closest)`。
 
-### 完全重复行诊断
+两 skill 的 R 铁律一致（`=`、`|>`、`\(x)`、`.by`、禁 `ifelse`/`merge`），无冲突；审计与清洗主流程仍以本 skill 为准。
 
-```r
-result = input |>
-  summarise(n = n(), .by = everything()) |>
-  filter(n > 1) |>
-  arrange(desc(n))
-```
+## 直接可用的片段（完整代码在 [references/snippets.md](references/snippets.md)）
 
-> 用 `.by` 单次分组（不触发 dplyr 分组信息消息，避免污染 stdout JSON）；勿用 `group_by()`。
+片段已全部下沉到 `references/snippets.md`，用时按下表取用，不要凭记忆重写：
 
-### 列名蛇形命名（需 `janitor`）
+| 场景 | 片段 | 备注 |
+|---|---|---|
+| 结构/缺失/重复/异常概览 | 审计：结构+缺失+重复+异常值 | 一次输出审计摘要 |
+| 完全重复行定位 | 完全重复行诊断 | `.by` 单次分组，勿 `group_by` |
+| 列名标准化 | 列名蛇形命名 | 需 `janitor`；缺则手写降级 |
+| 文本清洗 | 文本标准化 | 需 `stringr`；缺则 `trimws()` 降级 |
+| 类别归并 | 类别标准化（case_when） | `TRUE ~` 默认分支吞 NA 陷阱 |
+| 日期多格式 | 日期多格式统一 | 保留原列 + 失败 flag |
+| 缺失填补 | 缺失值填补（示例） | 先报缺失率，不盲填关键字段 |
+| 异常值标记 | 异常值 flag（IQR） | 列方向 for 循环属合理例外 |
+| 多格式读取 | 多格式读取 read_any | CSV/Excel/RDS/Parquet；需 `readxl`/`arrow` |
+| 清洗日志 | 结构化清洗日志 | 每步一行，高风险项记用户决策 |
+| 连接关系判定 | 连接前关系诊断 | 输出 1:1 / N:1 / 1:N / N:N |
 
-```r
-result = input |>
-  rename_with(\(x) janitor::make_clean_names(x, case = "snake"))
-```
-
-> 若用户环境缺 `janitor`，先询问是否安装，或退回手写列名清洗。
-
-### 文本标准化（需 `stringr`）
-
-```r
-result = input |>
-  mutate(across(where(is.character), \(x) stringr::str_squish(x))) |>
-  mutate(across(where(is.character), \(x) na_if(x, "")))
-```
-
-> 缺 `stringr` 时用 base `trimws()` 降级。
-
-### 类别标准化（`case_when` 归并）
-
-```r
-result = input |>
-  mutate(member_level = case_when(
-    toupper(member_level) == "VIP" ~ "VIP",
-    member_level %in% c("会员", "普通会员") ~ member_level,
-    TRUE ~ "普通会员"))
-```
-
-> 陷阱：`TRUE ~ "默认值"` 会把 `NA` 一并吃进去当默认值。若那不列为业务默认，请先 `mutate(member_level = if_else(is.na(member_level), NA_character_, ...))` 或用单独分支，勿让默认分支同时吞缺失。
-
-### 日期多格式统一
-
-```r
-result = input |>
-  mutate(
-    date_parsed = lubridate::parse_date_time(
-      date_raw,
-      orders = c("Y/m/d", "Y-m-d", "Ymd"),
-      quiet  = TRUE
-    ) |>
-      as.Date(),
-    date_parse_fail = is.na(date_parsed) & !is.na(date_raw)
-  )
-```
-
-> `orders` 给出所有可能格式；**保留原字段 `date_raw`，新增解析字段 `date_parsed` + 失败 flag `date_parse_fail`**（解析失败得 `NA`），不覆盖原列。
-
-### 缺失值填补（示例，不可盲用）
-
-```r
-result = input |>
-  mutate(
-    across(
-      where(is.numeric),
-      \(x) tidyr::replace_na(x, median(x, na.rm = TRUE))
-    )
-  )
-```
-
-缺失处理必须结合业务含义；默认先报告缺失率，不自动填补关键字段。
-
-### 异常值 flag（IQR，推荐默认）
-
-```r
-num_names = input |>
-  select(where(is.numeric)) |>
-  names()
-result = input
-for (nm in num_names) {
-  x   = result[[nm]]
-  q   = quantile(x, c(0.25, 0.75), na.rm = TRUE)
-  iqr = IQR(x, na.rm = TRUE)
-  result[[paste0(nm, "_outlier_flag")]] = !is.na(x) &
-    (x < (q[[1]] - 1.5 * iqr) | x > (q[[2]] + 1.5 * iqr))
-}
-```
-
-### 连接前关系诊断
-
-```r
-left_dup  = left |>
-  count(.data[["id"]]) |>
-  filter(n > 1)
-right_dup = right |>
-  count(.data[["id"]]) |>
-  filter(n > 1)
-relationship = case_when(
-  nrow(left_dup) == 0 & nrow(right_dup) == 0 ~ "1:1",
-  nrow(left_dup) > 0 & nrow(right_dup) == 0 ~ "N:1",
-  nrow(left_dup) == 0 & nrow(right_dup) > 0 ~ "1:N",
-  TRUE ~ "N:N"
-)
-```
-
-多文件场景直接在单个 `.R` 脚本内用 `readr::read_csv()` 读多张表即可，不依赖单 `input`。
+多文件场景在单个 `.R` 脚本内用 `read_any()` 按扩展名读入多张表，不依赖单 `input`。
 
 ## 默认决策表
 
