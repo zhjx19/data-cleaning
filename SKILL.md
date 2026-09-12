@@ -152,7 +152,7 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 
 - **清洗数据**：原始文件名加 `_cleaned`，不覆盖原文件。
 - **清洗日志**：步骤、规则、影响行列数、用户决策点。
-- **质量问题报告**：优先 `.qmd`，默认 `format: typst` → 一份 PDF 文档（Quarto 内置 typst 引擎，离线可用）；仅当用户点名要幻灯片时，才用 `format: revealjs`（不依赖扩展）或 `format: quarto-talks-revealjs`（须先联网 `quarto install quarto-ext/quarto-talks`）。`.qmd` 写完后同样剥 BOM 再 `quarto render <文件>.qmd`。构建图表依赖 `ggplot2 + gridExtra`（勿依赖 `patchwork`）。骨架见同目录 `templates/cleaning_report_skeleton.qmd`（勿用中文文件名：部分环境下 R 的 `list.files()` 会静默丢条目）。
+- **质量问题报告**：优先 `.qmd`，默认 `format: PrettyTypst-typst` → 一份 PDF 文档（Quarto 扩展已 vendor 在 `_extensions/PrettyTypst/`，离线可用；字体链 Ubuntu → Microsoft YaHei → PingFang SC → Noto Sans CJK SC，中文跨平台确定性渲染）。仅当用户点名要幻灯片时，才用 `format: revealjs`（不依赖扩展）。渲染规则：**Git Bash 下先 `env -u LC_CTYPE -u LANG -u LC_ALL quarto render <文件>.qmd`**（LC_CTYPE=C.UTF-8 使 R 启动 locale 切换失败，chunk 内中文被转义成 `<U+XXXX>` 而解析报错）；PowerShell/cmd 直接 `quarto render`。`.qmd` 写完后同样剥 BOM。构建图表依赖 `ggplot2 + gridExtra`（勿依赖 `patchwork`）。骨架见 `templates/cleaning_report_skeleton.qmd`。
 - **问题清单**：主键不明、N:N 风险、口径冲突、异常值策略、需人工确认的类别映射。
 - **数据字典**：字段名、类型、含义、取值范围、缺失率、清洗规则。
 
@@ -165,6 +165,7 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 | `list`/`data.frame` 结构异常 | 漏了 `as_tibble()`；`fromJSON` 对简单对象返回结构不统一 |
 | 嵌套 list 字段丢失 | `toJSON` 缺 `force = TRUE` |
 | 中文乱码 | 任一环节用了非 UTF-8（如 PowerShell `Out-File` 默认编码）；全程 UTF-8 无 BOM |
+| `.qmd` 渲染失败/R chunk 报 `unexpected '<'`（代码里出现 `<U+XXXX>`） | Git Bash 的 `LC_CTYPE=C.UTF-8` 使 R 启动 locale 切换失败，knitr 把 chunk 内中文转义；`env -u LC_CTYPE -u LANG -u LC_ALL quarto render` 或改用 PowerShell/cmd |
 | `.qmd` 渲染失败/解析 YAML 失败 | `.qmd` 也带 BOM；`.R` 与 `.qmd` 写完后都剥 BOM 再 `quarto render` |
 | "font family not found" / ggplot2 中文变方块 | 图形设备缺 CJK 字体：不要给 `theme(base_family=...)` 强加中文字体；用系统默认即可，需中文字体时用 `Sys.setlocale`/`showtext` 或 PNG 设备 |
 | `(p1) \| (p2)` 报错 | 需 `patchwork`（常未装）；双图并排用 `gridExtra::grid.arrange(p1, p2, ncol = 2)` |

@@ -1,12 +1,6 @@
 ---
 title: "数据清洗报告"
-subtitle: "一屏看懂脏在哪 · 逐项清洗(代码/结果/说明) · 整洁数据与总结"
-author: ""
-format:
-  typst:
-    toc: true
-
-date: "@@@@@-@@-@@"
+format: PrettyTypst-typst
 execute:
   echo: true
   warning: false
@@ -14,18 +8,21 @@ execute:
 ---
 
 <!-- 声明约定：
-  1. 写完本 .qmd 与任何 .R 脚本后，先剥 UTF-8 BOM 再 `quarto render <文件>.qmd`；
-     否则 Rscript / YAML 会因 BOM 报错。
-  2. R 风格铁律：
-       - 赋值用 =，禁用 <-
-       - 管道用 |>，禁用 %>%
-       - 匿名函数用 \(x)，禁用 function(x)
-       - 分组优先 .by
-       - 禁用 ifelse / merge / gather / spread
-  3. 两张以上图并排用 gridExtra::grid.arrange(p1, p2, ncol = 2)；
+  1. 格式：PrettyTypst-typst（Quarto 扩展已 vendor 在 _extensions/PrettyTypst/，离线可用，
+     字体链含 CJK 回退，中文跨平台可渲染）。可选 logo：YAML 增加
+       typst-logo:
+         path: "logo.png"    ← 路径相对本 .qmd
+  2. 渲染环境（实测坑）：Git Bash 里 LC_CTYPE=C.UTF-8 会导致 R 启动 locale 切换失败，
+     knitr 把 chunk 内中文转义成 <U+XXXX> 使 R 解析报错。Git Bash 下先
+       env -u LC_CTYPE -u LANG -u LC_ALL quarto render <文件>.qmd
+     PowerShell / cmd 直接 quarto render 即可。
+  3. 写完本 .qmd 与任何 .R 脚本后，若报 `unexpected input in "﻿"`，先剥 UTF-8 BOM 再渲染。
+  4. R 风格铁律：赋值用 =，禁用 <-；管道用 |>，禁用 %>%；匿名函数用 \(x)；
+     分组优先 .by；禁用 ifelse / merge / gather / spread。
+  5. 两张以上图并排用 gridExtra::grid.arrange(p1, p2, ncol = 2)；
      勿用 (p1 | p2)，否则提示缺 patchwork。
-  4. 流程：先审计 -> 逐项清洗 -> 异常打标不删除 -> 输出整洁数据 + 总结；
-     raw 只读用于前后对照。 -->
+  6. 流程：先审计 -> 逐项清洗 -> 异常打标不删除 -> 输出整洁数据 + 总结；
+     raw 只读用于前后对照，所有改动作在 clean 副本上完成。 -->
 
 # 数据清洗报告
 
@@ -42,6 +39,10 @@ knitr::opts_chunk$set(
   out.width  = "100%",
   fig.align  = "center"
 )
+# ragg 设备对中文标签的字体回退更稳（未安装则用默认设备）
+if (requireNamespace("ragg", quietly = TRUE)) {
+  knitr::opts_chunk$set(dev = "ragg_png")
+}
 
 library(tidyverse)
 library(janitor)   # make_clean_names
@@ -200,7 +201,8 @@ clean = clean |>
   )
 ```
 
-**说明**：`!is.na()` 保护；`flag_*` 保留原值供复核，不删除。
+**说明**：`!is.na()` 保护；`flag_*` 保留原值供复核，不删除。小样本（如 n < 10）下 IQR
+会被极端值自身撑大，可辅以业务硬边界（如金额 < 0）兜底。
 
 ### 2.5 去重与主键打标
 
