@@ -1,6 +1,12 @@
 ---
 name: data-cleaning
-description: Use when a user asks to clean, audit, or prepare tabular data (CSV/Excel/RDS/Parquet) — missing-value, duplicate, or outlier diagnosis and treatment, field/column standardization, multi-file join relationship diagnosis, cleaning logs, or data-quality reports. Prefer audit-then-clean with R tidyverse via Rscript + JSON, and a Quarto .qmd report when a report is wanted. Triggers: 数据清洗/数据审计/缺失值/重复值/异常值/字段标准化/多文件连接诊断/清洗日志/数据质量报告.
+description: >-
+  Use when a user asks to clean, audit, or prepare tabular data (CSV/Excel/RDS/Parquet) —
+  missing-value, duplicate, or outlier diagnosis and treatment, field/column standardization,
+  multi-file join relationship diagnosis, cleaning logs, or data-quality reports.
+  Prefer audit-then-clean with R tidyverse via Rscript + JSON, and a Quarto .qmd report when
+  a report is wanted.
+  Triggers: 数据清洗/数据审计/缺失值/重复值/异常值/字段标准化/多文件连接诊断/清洗日志/数据质量报告.
 ---
 
 # data-cleaning：先审计、后清洗、可追溯交付
@@ -29,7 +35,7 @@ description: Use when a user asks to clean, audit, or prepare tabular data (CSV/
 
 opencode 在 Windows shell 中调用 R，数据经 JSON 中转、结果经 stdout 返回：
 
-1. 用户数据（CSV 或已有表）先落到临时 JSON 文件（对象/数组，UTF-8 无 BOM）。
+1. 数据进入脚本的两条路：对话中内联的表（粘贴数据/内存对象）落临时 JSON 文件（对象/数组，UTF-8 无 BOM），脚本经 `args[1]` 读入；磁盘上已有的文件（CSV/Excel/RDS/Parquet）**不经 JSON 中转**，脚本内直接 `read_any()` 按路径读入，JSON 只传文件路径清单。
 2. 按下方固定模板写 `.R` 脚本，`args[1]` 指向 JSON 路径，脚本内 `fromJSON` 读入。
 3. `Rscript.exe --vanilla --quiet script.R input.json` 运行，**stdout 只能输出 JSON**，包启动消息用 `suppressPackageStartupMessages` 压掉。
 4. 解析 stdout JSON 得到结果；诊断信息写 stderr 或日志文件，勿混入 stdout。
