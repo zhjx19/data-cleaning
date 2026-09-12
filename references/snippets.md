@@ -128,6 +128,27 @@ result = input |>
   mutate(across(where(is.numeric), flag_outlier_iqr, .names = "{.col}_outlier_flag"))
 ```
 
+## 结构探测：汇总行 / 合并单元格 / 类型污染（清洗前先跑）
+
+> 结构问题不是"脏值"，是**行/类型层面的结构性污染**——不进缺失三档线，先探测、再剥离/继承。
+
+```r
+# 1) 疑似汇总行：关键文本列命中 总计/小计/合计/Total
+sum_rows = input |>
+  filter(if_any(where(is.character), \(x) str_detect(str_squish(x), "^(总计|小计|合计|Total)$")))
+# 命中：先剥离（保留原文件可复核、记录剔除行数），再做任何数值统计
+
+# 2) 类型断言：数值列被猜成 character 的典型信号（汇总行/带单位文本混入）
+#    where(is.numeric) 会【静默跳过】character 列——先断言类型，再上 across/异常检测
+type_tbl = input |>
+  summarise(across(everything(), \(x) class(x)[1])) |>
+  pivot_longer(everything(), names_to = "column", values_to = "class")
+
+# 3) 合并单元格隐式填充：分组列仅组首行有值 = 结构性缺失，用 fill() 按序继承
+result = input |> tidyr::fill(地区, .direction = "down")
+# 前提：与用户确认"空 = 继承上一行"这一业务语义；日志记录填充列与影响范围
+```
+
 ## 多格式读取（CSV / Excel / RDS / Parquet）
 
 多文件场景直接在 `.R` 脚本内按扩展名读入多张表，不依赖单 `input`（需 `readxl` / `arrow`）：

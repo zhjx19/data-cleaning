@@ -302,6 +302,26 @@ naive = ord |> mutate(customer_id = as.character(customer_id))
 check("T16 naive fix still unmatched (trap documented)",
       nrow(naive |> anti_join(cus, by = "customer_id")) == 2)
 
+## T18 structural dirt: summary rows / merged cells / type pollution --------
+dirty = tibble(
+  region = c("\u534e\u4e1c", NA, NA, "\u534e\u5317", NA),   # merged-cell style
+  amount = c("10", "20", "\u603b\u8ba1", "30", "40")        # summary row pollutes type
+)
+type_tbl = dirty |>
+  summarise(across(everything(), \(x) class(x)[1])) |>
+  pivot_longer(everything(), names_to = "column", values_to = "class")
+check("T18 type assertion flags character pollution",
+      type_tbl$class[type_tbl$column == "amount"] == "character")
+sum_rows = dirty |>
+  filter(if_any(where(is.character),
+                \(x) str_detect(str_squish(x),
+                                "^(\u603b\u8ba1|\u5c0f\u8ba1|\u5408\u8ba1|Total)$")))
+check("T18 summary row detected", nrow(sum_rows) == 1)
+filled = dirty |> tidyr::fill(region, .direction = "down")
+check("T18 fill down inherits group labels",
+      filled$region[2] == "\u534e\u4e1c" && filled$region[3] == "\u534e\u4e1c" &&
+        filled$region[5] == "\u534e\u5317")
+
 ## ---------------------------------------------------------------- summary
 cat(sprintf("\nSummary: %d check(s), %d failure(s)\n", total, failures))
 if (failures > 0) quit(status = 1)
