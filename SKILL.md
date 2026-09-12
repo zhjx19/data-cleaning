@@ -111,7 +111,7 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 3. 对候选键做**五查**：缺失率、唯一值数、重复键样例、**类型一致**（numeric vs character）、**格式规范**（前导零/空格/大小写）——片段"键一致性检查"。
 4. 判定关系 `1:1 / 1:N / N:1 / N:N`（模板见下）。
 5. join 选型正向规则：`N:1` → `left_join(明细, 维表)`；`1:1` → 任一方向；`1:N` → 先想清以哪侧为基准（通常明细为主）；`N:N` 默认停止并提示风险，先聚合/去重/补主键再连。
-6. 连接后验证：行数膨胀、**双向未匹配（`anti_join`）**、新增缺失、重复列后缀、**键映射抽样核对**（防"错误匹配"，不只防"全不匹配"）。
+6. 连接后验证：行数膨胀、**双向未匹配（`anti_join`）**、新增缺失、重复列后缀、**键映射抽样核对**（防"错误匹配"，不只防"全不匹配"）。未匹配 > 0 时回五查 + `match_rate` 对比（`match_norm > match_raw` 即大小写/空格不一致实锤）。
 
 ## 技能协作（reshape / 分组 / 累计范式兜底）
 
@@ -139,7 +139,7 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 | 日期多格式 | 日期多格式统一 | 保留原列 + 失败 flag |
 | 缺失决策与填补 | 缺失决策线（三档） | <5% 可填补 / 5–40% 询问 / >40% 或关键列拍板 |
 | 异常值标记 | 异常值 flag（三法并列） | 默认 IQR；重尾/小样本用 MAD；正态大样本可用 z-score |
-| 多格式读取 | 多格式读取 read_any | CSV/Excel/RDS/Parquet；需 `readxl`/`arrow`；中文 CSV 用 `read_csv_anyenc` 自动判码 |
+| 多格式读取 | 多格式读取 read_any | CSV/Excel/RDS/Parquet；需 `readxl`/`arrow`；CSV 默认走 `read_csv_anyenc` 判码 |
 | 清洗日志 | 结构化清洗日志 | 每步一行，高风险项记用户决策 |
 | 连接关系判定 | 连接前关系诊断 | 输出 1:1 / N:1 / 1:N / N:N；附键一致性五查与连接后验证 |
 | 中文业务格式 | 金额/中文日期/全角转半角 | "1,234.50元"、`Y年m月d日`、全角 `chartr`；禁直接 as.numeric |

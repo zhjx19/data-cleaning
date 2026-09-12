@@ -83,14 +83,23 @@ result = input |>
 > `5%–40%` 保留 NA 并询问；`>40%` 或关键列（主键/标识/核心业务字段）交用户拍板。
 
 ```r
+# 结构缺失探针：一列的 NA 全部紧跟在非 NA 后 = 合并单元格样式（合并单元格导出的典型形态）
+is_structural_na = \(x) {
+  idx = which(is.na(x))
+  length(idx) > 0 && all(idx > 1) && all(!is.na(x[idx - 1]))
+}
+
 na_tbl = input |>
   summarise(across(everything(), \(x) mean(is.na(x)))) |>
   pivot_longer(everything(), names_to = "column", values_to = "na_rate") |>
-  mutate(band = case_when(
-    na_rate <  0.05 ~ "impute-ok",   # 非关键列可默认填补
-    na_rate <= 0.40 ~ "ask",         # 报告并询问
-    TRUE            ~ "flag-drop"    # 标记待删/待补，用户拍板
-  ))
+  mutate(
+    structural = vapply(input, is_structural_na, logical(1))[column],
+    band = case_when(
+      structural      ~ "structural-fill",  # 结构性缺失 → fill() 继承，不进三档线
+      na_rate <  0.05 ~ "impute-ok",        # 非关键列可默认填补
+      na_rate <= 0.40 ~ "ask",              # 报告并询问
+      TRUE            ~ "flag-drop"         # 标记待删/待补，用户拍板
+    ))
 ```
 
 低档填补示例（**仅非关键列**，把 `<非关键数值列>` 换成实际列名；填补口径写进日志）：
@@ -195,7 +204,7 @@ result = input |> mutate(金额 = to_half(as.character(金额)))
 read_any = \(path) {
   ext = tolower(tools::file_ext(path))
   out = switch(ext,
-    csv     = readr::read_csv(path, show_col_types = FALSE),
+    csv     = read_csv_anyenc(path),   # 中文 CSV 自动判码（GBK 静默乱码防护，见下）
     xlsx    = readxl::read_excel(path),
     xls     = readxl::read_excel(path),
     rds     = readRDS(path),
@@ -277,14 +286,32 @@ relationship = case_when(
 
 ```r
 key_profile = \(df, key_col) tibble(
-  键类型     = class(df[[key_col]])[1],
-  唯一值数   = n_distinct(df[[key_col]]),
-  缺失数     = sum(is.na(df[[key_col]])),
-  前导零行数 = sum(str_detect(str_trim(as.character(df[[key_col]])), "^0[0-9]")),
-  重复行数   = sum(duplicated(df[[key_col]]) & !is.na(df[[key_col]]))
+  键类型       = class(df[[key_col]])[1],
+  唯一值数     = n_distinct(df[[key_col]], na.rm = TRUE),
+  缺失数       = sum(is.na(df[[key_col]])),
+  前导零行数   = sum(str_detect(str_trim(as.character(df[[key_col]])), "^0[0-9]"),
+                     na.rm = TRUE),
+  带空格行数   = sum(str_detect(as.character(df[[key_col]]), "^\\s|\\s$"),
+                     na.rm = TRUE),
+  大小写折叠差 = n_distinct(df[[key_col]], na.rm = TRUE) -
+                 n_distinct(str_to_upper(as.character(df[[key_col]])), na.rm = TRUE),
+  重复行数     = sum(duplicated(df[[key_col]]) & !is.na(df[[key_col]]))
 )
 key_profile(left, "customer_id")
 key_profile(right, "customer_id")
+```
+
+> `大小写折叠差 > 0` = 本表内部就有 a001/A001 并存。**跨表**的大小写/空格不一致
+> （两表各自内部一致、互相对不上）用下面的 `match_rate` 对比抓：
+
+```r
+match_rate = \(l, r, key) {
+  lk = str_trim(str_to_upper(as.character(l[[key]])))
+  rk = str_trim(str_to_upper(as.character(r[[key]])))
+  c(match_raw  = mean(as.character(l[[key]]) %in% as.character(r[[key]])),
+    match_norm = mean(lk %in% rk))
+}
+# match_norm > match_raw → 大小写/空格不一致实锤：统一后重连（口径问用户）
 ```
 
 ### 连接后验证（双向未匹配 + 膨胀 + 抽样核对）
@@ -293,7 +320,8 @@ key_profile(right, "customer_id")
 res = left_join(left, right, by = "customer_id")
 unmatched_l = left  |> anti_join(right, by = "customer_id")
 unmatched_r = right |> anti_join(left,  by = "customer_id")
-# 未匹配行数 > 0：先回键一致性五查找原因，禁止静默补 NA 继续走。
+# 未匹配行数 > 0：回五查 + match_rate 对比找原因（match_norm > match_raw 即
+# 大小写/空格实锤），禁止静默补 NA 继续走。
 # 抽样核对键映射（防"错误匹配"——验证清单拦不住错配，只能人工抽查）：
 set.seed(1)
 res |>

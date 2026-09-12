@@ -210,24 +210,34 @@ if (length(qmd_files) == 0) {
   }
 }
 
-## T13 missing-rate decision bands (<5% / 5-40% / >40%) ---------------------
+## T13 missing-rate decision bands (<5% / 5-40% / >40% / structural) --------
 missdf = tibble(
   lo  = ifelse(1:30 == 1, NA_real_, 1:30),        #  3.3% -> impute-ok
   mid = ifelse(1:30 <= 6, NA_real_, 1:30),        # 20.0% -> ask
-  hi  = ifelse(1:30 <= 20, NA_real_, 1:30)        # 66.7% -> flag-drop
+  hi  = ifelse(1:30 <= 20, NA_real_, 1:30),       # 66.7% -> flag-drop
+  st  = rep(c(1, NA_real_), 15)                   # merged-cell style -> structural
 )
+is_structural_na = \(x) {
+  idx = which(is.na(x))
+  length(idx) > 0 && all(idx > 1) && all(!is.na(x[idx - 1]))
+}
 na_tbl = missdf |>
   summarise(across(everything(), \(x) mean(is.na(x)))) |>
   pivot_longer(everything(), names_to = "column", values_to = "na_rate") |>
-  mutate(band = case_when(
-    na_rate <  0.05 ~ "impute-ok",
-    na_rate <= 0.40 ~ "ask",
-    TRUE            ~ "flag-drop"
-  ))
+  mutate(
+    structural = vapply(missdf, is_structural_na, logical(1))[column],
+    band = case_when(
+      structural      ~ "structural-fill",
+      na_rate <  0.05 ~ "impute-ok",
+      na_rate <= 0.40 ~ "ask",
+      TRUE            ~ "flag-drop"
+    ))
 band_of = \(col) na_tbl$band[na_tbl$column == col]
 check("T13 band <5% -> impute-ok",  band_of("lo")  == "impute-ok")
 check("T13 band 5-40% -> ask",      band_of("mid") == "ask")
 check("T13 band >40% -> flag-drop", band_of("hi")  == "flag-drop")
+check("T13 structural missing -> fill band (not flag-drop)",
+      band_of("st") == "structural-fill")
 
 ## T14 outlier methods: IQR / z-score / MAD ---------------------------------
 x_bad = c(10.5, 9999, 9999, 11.2, 12.9)  # small-n, heavy contamination
@@ -288,9 +298,14 @@ ord = tibble(customer_id = c(123, 124))
 cus = tibble(customer_id = c("00123", "00124"))
 key_profile = \(df, key_col) tibble(
   key_type      = class(df[[key_col]])[1],
-  n_unique      = n_distinct(df[[key_col]]),
+  n_unique      = n_distinct(df[[key_col]], na.rm = TRUE),
   na_count      = sum(is.na(df[[key_col]])),
-  leading_zeros = sum(str_detect(str_trim(as.character(df[[key_col]])), "^0[0-9]")),
+  leading_zeros = sum(str_detect(str_trim(as.character(df[[key_col]])), "^0[0-9]"),
+                      na.rm = TRUE),
+  has_spaces    = sum(str_detect(as.character(df[[key_col]]), "^\\s|\\s$"),
+                      na.rm = TRUE),
+  case_fold     = n_distinct(df[[key_col]], na.rm = TRUE) -
+                  n_distinct(str_to_upper(as.character(df[[key_col]])), na.rm = TRUE),
   dup_rows      = sum(duplicated(df[[key_col]]) & !is.na(df[[key_col]]))
 )
 kp_l = key_profile(ord, "customer_id")
@@ -301,6 +316,19 @@ check("T16 leading zeros detected", kp_r$leading_zeros == 2)
 naive = ord |> mutate(customer_id = as.character(customer_id))
 check("T16 naive fix still unmatched (trap documented)",
       nrow(naive |> anti_join(cus, by = "customer_id")) == 2)
+# case variants across tables: match_rate exposes what key_profile cannot see
+l2 = tibble(customer_id = c("a001", "a002"))
+r2 = tibble(customer_id = c("A001", "A002"))
+match_rate = \(l, r, key) {
+  lk = str_trim(str_to_upper(as.character(l[[key]])))
+  rk = str_trim(str_to_upper(as.character(r[[key]])))
+  c(match_raw  = mean(as.character(l[[key]]) %in% as.character(r[[key]])),
+    match_norm = mean(lk %in% rk))
+}
+mr = match_rate(l2, r2, "customer_id")
+check("T16 case mismatch exposed by match_rate", mr[[1]] == 0 && mr[[2]] == 1)
+check("T16 key_profile case_fold blind to cross-table case (by design)",
+      key_profile(l2, "customer_id")$case_fold == 0)
 
 ## T18 structural dirt: summary rows / merged cells / type pollution --------
 dirty = tibble(
