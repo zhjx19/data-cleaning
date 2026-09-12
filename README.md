@@ -30,7 +30,7 @@
 
 这个 skill 把清洗变成**对账**：动手前先交审计报告（缺失在哪、重复多少、离群几个、日期几种格式），高风险动作（删行、填补、N:N 连接）必须停下来等你拍板，每一步都写进清洗日志——前后行数、影响范围、你的决策，一行不少。
 
-它也不是一份"方法论空文"：Windows 下 Rscript 的 BOM 坑、locale 坑、编码坑、`readr` 静默猜型的坑，全是真实踩过并写进坑表的；片段代码由 [scripts/verify_snippets.R](scripts/verify_snippets.R) 的 40 项回归测试保真。
+它也不是一份"方法论空文"：Windows 下 Rscript 的 BOM 坑、locale 坑、编码坑、`readr` 静默猜型的坑，全是真实踩过并写进坑表的；片段代码由 [scripts/verify_snippets.R](scripts/verify_snippets.R) 的 43 项回归测试保真。
 
 ## 效果示例
 
@@ -104,7 +104,7 @@ cp -r data-cleaning ~/.claude/skills/
 | join 诊断 | 多数缺失 | 内置关系判定模板 + 行数膨胀验证 |
 | 清洗日志 | 一句"记录决策" | 结构化 CSV，每步一行可对账 |
 | 质量报告 | 少数承诺 | PrettyTypst PDF，真实实例入库 |
-| 代码保真 | — | 40 项片段回归一键验证 |
+| 代码保真 | — | 43 项片段回归一键验证 |
 
 ## 安全边界
 
@@ -128,7 +128,7 @@ cp -r data-cleaning ~/.claude/skills/
 
 ```bash
 Rscript --vanilla scripts/verify_snippets.R
-# [PASS] × 40，Summary: 40 check(s), 0 failure(s)，exit 0
+# [PASS] × 43，Summary: 43 check(s), 0 failure(s)，exit 0
 ```
 
 行为测试见 [test-prompts.json](test-prompts.json)：含一条"我赶时间，能删的都删了"的对抗性
