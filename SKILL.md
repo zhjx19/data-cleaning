@@ -7,6 +7,9 @@ description: >-
   Prefer audit-then-clean with R tidyverse via Rscript + JSON, and a Quarto .qmd report when
   a report is wanted.
   Triggers: 数据清洗/数据审计/缺失值/重复值/异常值/字段标准化/多文件连接诊断/清洗日志/数据质量报告.
+related-skills:
+  - tidy-data
+compatibility: claude-code, zcode, opencode, codex
 ---
 
 # data-cleaning：先审计、后清洗、可追溯交付
@@ -74,6 +77,8 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 - 禁用 `ifelse()`、`merge()`、`gather()`、`spread()`、`*_at/*_if/*_all()`。
 - **链式换行规则**：在每个 `|>`、`+`（ggplot 图层）、`&`、逻辑 OR `|` 后换行，运算符放行尾，下一行缩进对齐；一行不塞两个及以上运算符。管道链第一行放被操作对象，后续每步一行。
 - `as_tibble()` 与 `suppressPackageStartupMessages()` 不可省略；`toJSON` 加 `force = TRUE` 防嵌套 list 丢字段。
+
+> 铁律与 `tidy-data` 技能 §9 同源（`=`、`|>`、`\(x)`、`.by`、禁 `ifelse`/`merge`/`%>%`/旧 scoped 变体）。两处任一改动，必须双向同步；本文件的链式换行规则与 JSON 协议条款为本 skill 特有追加。
 
 ## 标准工作流
 
