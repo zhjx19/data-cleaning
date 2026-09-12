@@ -32,7 +32,7 @@ compatibility: claude-code, zcode, opencode, codex
 3. **原始数据不可覆盖**：清洗结果另存为 `*_cleaned` 后缀或输出目录，永不覆盖原文件。
 4. **异常值默认标记，不盲删**：默认新增 `*_outlier_flag`；删除/截尾必须说明规则与影响行数。
 5. **可追溯**：记录每一步的规则、原因、影响行列数、输出文件。
-6. **用户决策点必须暂停确认**：主键不明、N:N 连接、口径冲突、异常值删除、大量缺失删除等。
+6. **用户决策点必须暂停确认**：主键不明、N:N 连接、口径冲突、异常值删除、大量缺失删除等。唯一出口：用户**书面坚持**且明知后果时，按其决策执行并在日志"用户决策"列标记 `用户强制`，全程可追溯；唯独**覆盖原始文件**绝对拒绝。
 
 ## R 执行协议（本 skill 的执行基石）
 
@@ -65,6 +65,20 @@ input = as_tibble(jsonlite::fromJSON(args[1]))
 # ... 中间放清洗代码，最终必须创建 result 对象 ...
 result = input |>
   summarise(n = n())
+cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
+```
+
+### 磁盘文件版模板（数据在磁盘上时，JSON 只传路径清单）
+
+```r
+suppressPackageStartupMessages({
+  library(jsonlite)
+  library(tidyverse)
+})
+args  = commandArgs(trailingOnly = TRUE)
+paths = jsonlite::fromJSON(args[1])$files   # 如 {"files": ["data/orders.csv", "data/customers.csv"]}
+input = read_any(paths[1])                  # read_any 见 references/snippets.md；多文件各自读入
+# ... 中间放清洗代码，最终必须创建 result 对象 ...
 cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 ```
 
@@ -183,7 +197,8 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 ## 自检清单
 
 - [ ] 每个输入文件是否已分别审计？
-- [ ] 多文件是否已诊断连接键与连接关系？
+- [ ] 数值处理前是否已排除汇总行、合并单元格、类型污染等结构问题？
+- [ ] 多文件是否已诊断连接键与连接关系？键是否做了类型/前导零一致性检查？
 - [ ] 是否避免了未诊断的 `N:N join`？
 - [ ] 是否验证连接后行数膨胀与未匹配键？
 - [ ] 是否保留原始数据且另存清洗结果？
