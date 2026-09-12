@@ -152,7 +152,7 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 
 - **清洗数据**：原始文件名加 `_cleaned`，不覆盖原文件。
 - **清洗日志**：步骤、规则、影响行列数、用户决策点。
-- **质量问题报告**：优先 `.qmd`，默认 `format: typst` → 一份 PDF 文档（Quarto 内置 typst 引擎，离线可用）；仅当用户点名要幻灯片时，才用 `format: revealjs`（不依赖扩展）或 `format: quarto-talks-revealjs`（须先联网 `quarto install quarto-ext/quarto-talks`）。`.qmd` 写完后同样剥 BOM 再 `quarto render <文件>.qmd`。构建图表依赖 `ggplot2 + gridExtra`（勿依赖 `patchwork`）。骨架见同目录 `templates/清洗报告骨架.qmd`。
+- **质量问题报告**：优先 `.qmd`，默认 `format: typst` → 一份 PDF 文档（Quarto 内置 typst 引擎，离线可用）；仅当用户点名要幻灯片时，才用 `format: revealjs`（不依赖扩展）或 `format: quarto-talks-revealjs`（须先联网 `quarto install quarto-ext/quarto-talks`）。`.qmd` 写完后同样剥 BOM 再 `quarto render <文件>.qmd`。构建图表依赖 `ggplot2 + gridExtra`（勿依赖 `patchwork`）。骨架见同目录 `templates/cleaning_report_skeleton.qmd`（勿用中文文件名：部分环境下 R 的 `list.files()` 会静默丢条目）。
 - **问题清单**：主键不明、N:N 风险、口径冲突、异常值策略、需人工确认的类别映射。
 - **数据字典**：字段名、类型、含义、取值范围、缺失率、清洗规则。
 
@@ -168,6 +168,7 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 | `.qmd` 渲染失败/解析 YAML 失败 | `.qmd` 也带 BOM；`.R` 与 `.qmd` 写完后都剥 BOM 再 `quarto render` |
 | "font family not found" / ggplot2 中文变方块 | 图形设备缺 CJK 字体：不要给 `theme(base_family=...)` 强加中文字体；用系统默认即可，需中文字体时用 `Sys.setlocale`/`showtext` 或 PNG 设备 |
 | `(p1) \| (p2)` 报错 | 需 `patchwork`（常未装）；双图并排用 `gridExtra::grid.arrange(p1, p2, ncol = 2)` |
+| `list.files()` 找不到明知存在的文件 | locale 非 UTF-8 时（R 启动报 `Setting LC_CTYPE=C.UTF-8 failed`）中文文件名条目被静默丢弃；脚本/模板一律用 ASCII 文件名，或改用 `file.exists()`/`Sys.glob()` 定位 |
 | revealjs/幻灯片 format 出错 | HTML 幻灯片用 `format: revealjs`；若要求 `quarto-talks-revealjs`，须先联网装扩展 `quarto add quarto-ext/quarto-talks`，否则渲染报 "Unable to read the extension" |
 
 ## 自检清单

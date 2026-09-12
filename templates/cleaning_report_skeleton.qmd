@@ -48,7 +48,7 @@ library(janitor)   # make_clean_names
 library(gridExtra) # grid.arrange
 
 # NA 与空白（trimws==""）一并计为缺失
-miss_cnt = function(df) {
+miss_cnt = \(df) {
   vapply(
     names(df),
     \(col) sum(is.na(df[[col]]) |
