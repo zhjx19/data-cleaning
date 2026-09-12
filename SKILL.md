@@ -123,9 +123,9 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 | 文本清洗 | 文本标准化 | 需 `stringr`；缺则 `trimws()` 降级 |
 | 类别归并 | 类别标准化（case_when） | `TRUE ~` 默认分支吞 NA 陷阱 |
 | 日期多格式 | 日期多格式统一 | 保留原列 + 失败 flag |
-| 缺失填补 | 缺失值填补（示例） | 先报缺失率，不盲填关键字段 |
-| 异常值标记 | 异常值 flag（IQR） | 列方向 for 循环属合理例外 |
-| 多格式读取 | 多格式读取 read_any | CSV/Excel/RDS/Parquet；需 `readxl`/`arrow` |
+| 缺失决策与填补 | 缺失决策线（三档） | <5% 可填补 / 5–40% 询问 / >40% 或关键列拍板 |
+| 异常值标记 | 异常值 flag（三法并列） | 默认 IQR；重尾/小样本用 MAD；正态大样本可用 z-score |
+| 多格式读取 | 多格式读取 read_any | CSV/Excel/RDS/Parquet；需 `readxl`/`arrow`；中文 CSV 用 `read_csv_anyenc` 自动判码 |
 | 清洗日志 | 结构化清洗日志 | 每步一行，高风险项记用户决策 |
 | 连接关系判定 | 连接前关系诊断 | 输出 1:1 / N:1 / 1:N / N:N |
 
@@ -144,8 +144,10 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 | 日期多种格式混用 | `parse_date_time(orders = ...)` 统一为 `Date` |
 | 主键重复（同 ID 但字段不全相同） | 保留首条 + 打标记，不静默删 |
 | `case_when(TRUE ~ "默认值")` | 会把 `NA` 一并当默认值，构成业务假设——必须说清并在日志标记 |
-| 缺失率高 | 不自动删除，先报告并询问 |
-| 异常值 | 默认新增 flag，不删除 |
+| 缺失率 < 5%（非关键列） | 可默认填补（数值=中位数、分类=众数），日志记录填补口径 |
+| 缺失率 5%–40% | 保留 NA，报告缺失率并询问处理方式 |
+| 缺失率 > 40%，或关键列（主键/标识/核心业务字段）缺失 | 不填补不删除，列清单交用户拍板 |
+| 异常值 | 默认新增 flag（默认 IQR；重尾/小样本用 MAD，正态大样本可用 z-score），不删除 |
 | N:N join | 默认停止，报告风险并询问 |
 
 ## 交付物规范
@@ -170,6 +172,7 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 | "font family not found" / ggplot2 中文变方块 | 图形设备缺 CJK 字体：不要给 `theme(base_family=...)` 强加中文字体；用系统默认即可，需中文字体时用 `Sys.setlocale`/`showtext` 或 PNG 设备 |
 | `(p1) \| (p2)` 报错 | 需 `patchwork`（常未装）；双图并排用 `gridExtra::grid.arrange(p1, p2, ncol = 2)` |
 | `list.files()` 找不到明知存在的文件 | locale 非 UTF-8 时（R 启动报 `Setting LC_CTYPE=C.UTF-8 failed`）中文文件名条目被静默丢弃；脚本/模板一律用 ASCII 文件名，或改用 `file.exists()`/`Sys.glob()` 定位 |
+| 中文 CSV 读入后是 `\xd0\xd5` 式乱码 | 源文件是 GBK（Excel/老系统导出），且 `readr` **不报错而是静默保留原始字节**：用片段 `read_csv_anyenc` 读前判码（`validUTF8` 检查文件头），按 GB18030 读入，并在清洗日志记录源编码 |
 | revealjs/幻灯片 format 出错 | HTML 幻灯片用 `format: revealjs`；若要求 `quarto-talks-revealjs`，须先联网装扩展 `quarto add quarto-ext/quarto-talks`，否则渲染报 "Unable to read the extension" |
 
 ## 自检清单

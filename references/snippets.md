@@ -77,36 +77,55 @@ result = input |>
 
 > `orders` 给出所有可能格式；**保留原字段 `date_raw`，新增解析字段 `date_parsed` + 失败 flag `date_parse_fail`**（解析失败得 `NA`），不覆盖原列。
 
-## 缺失值填补（示例，不可盲用）
+## 缺失决策线（先量化，再按档处理）
+
+> 三档线（先 `na_tbl` 看全貌，再按档处理）：`<5%` 非关键列可默认填补；
+> `5%–40%` 保留 NA 并询问；`>40%` 或关键列（主键/标识/核心业务字段）交用户拍板。
+
+```r
+na_tbl = input |>
+  summarise(across(everything(), \(x) mean(is.na(x)))) |>
+  pivot_longer(everything(), names_to = "column", values_to = "na_rate") |>
+  mutate(band = case_when(
+    na_rate <  0.05 ~ "impute-ok",   # 非关键列可默认填补
+    na_rate <= 0.40 ~ "ask",         # 报告并询问
+    TRUE            ~ "flag-drop"    # 标记待删/待补，用户拍板
+  ))
+```
+
+低档填补示例（**仅非关键列**，把 `<非关键数值列>` 换成实际列名；填补口径写进日志）：
 
 ```r
 result = input |>
-  mutate(
-    across(
-      where(is.numeric),
-      \(x) tidyr::replace_na(x, median(x, na.rm = TRUE))
-    )
-  )
+  mutate(across(<非关键数值列>, \(x) tidyr::replace_na(x, median(x, na.rm = TRUE))))
 ```
 
-缺失处理必须结合业务含义；默认先报告缺失率，不自动填补关键字段。
+关键字段（主键、核心金额/数量）任何缺失率都不自动填补——填补是业务假设。
 
-## 异常值 flag（IQR，推荐默认）
+## 异常值 flag（三法并列，默认 IQR）
 
-> 这里用 for 循环是**列方向批量生成 flag** 的合理例外（每个数值列生成一个新列，`across()` 不便逐列命名）；清洗主流程仍遵守"禁 for 循环逐行"铁律。
+> 选型：**IQR** 默认（无分布假设；小样本 <10 会被极端值自身撑大）；**MAD** 稳健 z 分数
+> （重尾、被极值污染、小样本时首选）；**z-score**（数据近似正态且 n 较大时）。
+> 多维联合离群（Mahalanobis）超出本 skill 范围，需要时转专门统计流程。
+> `across(.names = )` 原生逐列命名，**无需 for 循环**。
 
 ```r
-num_names = input |>
-  select(where(is.numeric)) |>
-  names()
-result = input
-for (nm in num_names) {
-  x   = result[[nm]]
-  q   = quantile(x, c(0.25, 0.75), na.rm = TRUE)
-  iqr = IQR(x, na.rm = TRUE)
-  result[[paste0(nm, "_outlier_flag")]] = !is.na(x) &
-    (x < (q[[1]] - 1.5 * iqr) | x > (q[[2]] + 1.5 * iqr))
+flag_outlier_iqr = \(x) {
+  q = quantile(x, c(0.25, 0.75), na.rm = TRUE)
+  i = IQR(x, na.rm = TRUE)
+  !is.na(x) & (x < q[[1]] - 1.5 * i | x > q[[2]] + 1.5 * i)
 }
+flag_outlier_zscore = \(x, z = 3) {
+  m = mean(x, na.rm = TRUE); s = sd(x, na.rm = TRUE)
+  !is.na(x) & abs((x - m) / s) > z
+}
+flag_outlier_mad    = \(x, k = 3.5) {  # R 的 mad() 已含 1.4826 常数
+  med = median(x, na.rm = TRUE); m = mad(x, na.rm = TRUE)
+  !is.na(x) & abs(x - med) / m > k
+}
+
+result = input |>
+  mutate(across(where(is.numeric), flag_outlier_iqr, .names = "{.col}_outlier_flag"))
 ```
 
 ## 多格式读取（CSV / Excel / RDS / Parquet）
@@ -130,6 +149,27 @@ right = read_any("data/customers.parquet")
 ```
 
 > 缺 `readxl` / `arrow` 时先询问是否安装，或退回 CSV 中转。
+
+### 中文 CSV 乱码防护（GBK/GB18030 判码）
+
+Excel 或老系统导出的中文 CSV 常是 GBK 编码。**`readr` 默认读它不报错，而是静默保留
+原始字节**（`\xd0\xd5` 式乱码），事后无法发现——必须读前判码：
+
+```r
+read_csv_anyenc = \(path) {
+  # 读文件头 1MB 判码：合法 UTF-8 或纯 ASCII → 默认读；否则按 GB18030（GBK 超集）读
+  b    = readBin(path, "raw", n = 1000000)
+  utf8 = validUTF8(rawToChar(b))
+  if (utf8 || !any(b > as.raw(0x7f))) {
+    readr::read_csv(path, show_col_types = FALSE)
+  } else {
+    readr::read_csv(path, locale = readr::locale(encoding = "GB18030"),
+                    show_col_types = FALSE)
+  }
+}
+```
+
+> 判定结果与源编码一并写入清洗日志。
 
 ## 结构化清洗日志（可追溯的最后一环）
 

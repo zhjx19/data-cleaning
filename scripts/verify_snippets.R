@@ -210,6 +210,77 @@ if (length(qmd_files) == 0) {
   }
 }
 
+## T13 missing-rate decision bands (<5% / 5-40% / >40%) ---------------------
+missdf = tibble(
+  lo  = ifelse(1:30 == 1, NA_real_, 1:30),        #  3.3% -> impute-ok
+  mid = ifelse(1:30 <= 6, NA_real_, 1:30),        # 20.0% -> ask
+  hi  = ifelse(1:30 <= 20, NA_real_, 1:30)        # 66.7% -> flag-drop
+)
+na_tbl = missdf |>
+  summarise(across(everything(), \(x) mean(is.na(x)))) |>
+  pivot_longer(everything(), names_to = "column", values_to = "na_rate") |>
+  mutate(band = case_when(
+    na_rate <  0.05 ~ "impute-ok",
+    na_rate <= 0.40 ~ "ask",
+    TRUE            ~ "flag-drop"
+  ))
+band_of = \(col) na_tbl$band[na_tbl$column == col]
+check("T13 band <5% -> impute-ok",  band_of("lo")  == "impute-ok")
+check("T13 band 5-40% -> ask",      band_of("mid") == "ask")
+check("T13 band >40% -> flag-drop", band_of("hi")  == "flag-drop")
+
+## T14 outlier methods: IQR / z-score / MAD ---------------------------------
+x_bad = c(10.5, 9999, 9999, 11.2, 12.9)  # small-n, heavy contamination
+flag_outlier_iqr    = \(x) {
+  q = quantile(x, c(0.25, 0.75), na.rm = TRUE)
+  i = IQR(x, na.rm = TRUE)
+  !is.na(x) & (x < q[[1]] - 1.5 * i | x > q[[2]] + 1.5 * i)
+}
+flag_outlier_zscore = \(x, z = 3) {
+  m = mean(x, na.rm = TRUE); s = sd(x, na.rm = TRUE)
+  !is.na(x) & abs((x - m) / s) > z
+}
+flag_outlier_mad    = \(x, k = 3.5) {   # R's mad() already includes the 1.4826 constant
+  med = median(x, na.rm = TRUE); m = mad(x, na.rm = TRUE)
+  !is.na(x) & abs(x - med) / m > k
+}
+check("T14 IQR small-n misses (documented weakness)", sum(flag_outlier_iqr(x_bad)) == 0)
+check("T14 MAD catches contaminated small-n", sum(flag_outlier_mad(x_bad)) == 2)
+set.seed(2)
+x_norm = c(rnorm(200, 50, 5), 200)
+check("T14 zscore catches extreme in large normal sample",
+      flag_outlier_zscore(x_norm)[201])
+res2 = tibble(a = c(1, 2, 3, 4, 100), b = c(5, 5, 5, 5, 5)) |>
+  mutate(across(where(is.numeric), flag_outlier_iqr, .names = "{.col}_outlier_flag"))
+check("T14 across(.names) per-column flags",
+      all(c("a_outlier_flag", "b_outlier_flag") %in% names(res2)) &&
+        res2$a_outlier_flag[[5]])
+
+## T15 GBK csv auto-encoding (silent mojibake guard) ------------------------
+read_csv_anyenc = \(path) {
+  b    = readBin(path, "raw", n = 1000000)
+  utf8 = validUTF8(rawToChar(b))
+  if (utf8 || !any(b > as.raw(0x7f))) {
+    readr::read_csv(path, show_col_types = FALSE)
+  } else {
+    readr::read_csv(path, locale = readr::locale(encoding = "GB18030"),
+                    show_col_types = FALSE)
+  }
+}
+gbk_p = file.path(tmp, "gbk.csv")
+gbk_lines = iconv(
+  c("\u59d3\u540d,\u6536\u5165", "\u5f20\u4e09,100", "\u674e\u56db,200"),
+  from = "UTF-8", to = "GBK")
+if (!any(is.na(gbk_lines))) {
+  writeLines(gbk_lines, gbk_p, useBytes = TRUE)
+  gbk_back = read_csv_anyenc(gbk_p)
+  check("T15 GBK csv column name", names(gbk_back)[1] == "\u59d3\u540d")
+  check("T15 GBK csv rows", nrow(gbk_back) == 2)
+  check("T15 UTF-8 csv unaffected", identical(nrow(read_csv_anyenc(csv_p)), 3L))
+} else {
+  check("T15 GBK csv", FALSE, "iconv GBK unavailable on this R build")
+}
+
 ## ---------------------------------------------------------------- summary
 cat(sprintf("\nSummary: %d check(s), %d failure(s)\n", total, failures))
 if (failures > 0) quit(status = 1)
