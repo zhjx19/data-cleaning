@@ -61,10 +61,13 @@ cd examples && quarto render cleaning_report.qmd                     # PDF 报�
 
 ## 快速开始
 
-把本目录复制进你的 Agent 技能目录（Claude Code / ZCode / OpenCode / Codex 通用的 SKILL.md 形态）：
+**前提**：本 skill 生成 R 代码并驱动 `Rscript` 执行——本机需装 R（建议 ≥4.2，含 tidyverse、jsonlite）；要出 PDF 报告还需 Quarto CLI。二者缺一时 skill 仍能给出清洗代码，但无法直接执行/渲染。
+
+把本目录复制进你的 Agent 技能目录（SKILL.md 形态，Claude Code / ZCode / OpenCode / Codex 通用）：
 
 ```bash
-git clone <repo-url> && cp -r data-cleaning ~/.claude/skills/   # 目录按你的 runtime 调整
+# 以 Claude Code 为例（目录按你的 runtime 调整）
+cp -r data-cleaning ~/.claude/skills/
 ```
 
 装完对 Agent 说：

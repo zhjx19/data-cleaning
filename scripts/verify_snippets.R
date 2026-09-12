@@ -132,12 +132,18 @@ tmp  = tempdir()
 src  = tibble(a = 1:3, b = c("x", "y", "z"))
 csv_p  = file.path(tmp, "f.csv");  xlsx_p = file.path(tmp, "f.xlsx")
 rds_p  = file.path(tmp, "f.rds");  pq_p   = file.path(tmp, "f.parquet")
-write_csv(src, csv_p); writexl::write_xlsx(src, xlsx_p)
-saveRDS(src, rds_p);   arrow::write_parquet(src, pq_p)
-ok9 = all(vapply(c(csv_p, xlsx_p, rds_p, pq_p),
+write_csv(src, csv_p); saveRDS(src, rds_p); arrow::write_parquet(src, pq_p)
+paths = c(csv_p, rds_p, pq_p)
+has_writexl = requireNamespace("writexl", quietly = TRUE)
+if (has_writexl) {
+  writexl::write_xlsx(src, xlsx_p)
+  paths = c(paths, xlsx_p)
+}
+ok9 = all(vapply(paths,
                  \(p) identical(nrow(read_any(p)), 3L) &&
                       identical(ncol(read_any(p)), 2L), logical(1)))
-check("T9 read_any 4 formats", ok9)
+check("T9 read_any", ok9,
+      if (!has_writexl) "xlsx variant skipped (writexl not installed)" else "")
 
 ## T10 structured cleaning log ----------------------------------------------
 cleaning_log = tibble(
@@ -159,7 +165,7 @@ check("T10 cleaning log roundtrip",
 ## T11 join relationship diagnosis ------------------------------------------
 left  = tibble(id = c(1L, 2L, 2L, 3L))
 right = tibble(id = c(1L, 2L), v = c("a", "b"))
-rel = function(l, r) {
+rel = \(l, r) {
   ld = l |> count(.data[["id"]]) |> filter(n > 1)
   rd = r |> count(.data[["id"]]) |> filter(n > 1)
   case_when(
@@ -172,6 +178,7 @@ check("T11 join relation N:1", rel(left, right) == "N:1")
 check("T11 join relation 1:1", rel(right, right) == "1:1")
 
 ## T12 static lint: templates must obey the skill's own R iron rules --------
+# One check per .qmd found, so the total check count scales with templates/.
 qmd_files = list.files(file.path(root, "templates"),
                        pattern = "\\.qmd$", full.names = TRUE,
                        ignore.case = TRUE)
