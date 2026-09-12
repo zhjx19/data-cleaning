@@ -1,0 +1,8 @@
+step,rule,rows_before,rows_after,impact,user_decision
+rename columns,snake_case via janitor,43,43,5 cols renamed,low-risk auto
+drop full duplicates,identical rows removed,43,40,-3 rows,low-risk auto
+parse dates,3 formats unified to Date; raw kept in sale_date_raw; failures flagged,40,40,0 parse failures,low-risk auto
+parse revenue,thousand separators stripped to numeric; raw kept,40,40,2 comma-numbered values parsed,low-risk auto
+unify categories,case/lang variants merged; no TRUE default (NA trap avoided),40,40,8 spellings -> 2 levels; unmapped=0,assumption logged
+flag anomalies,negative + IQR 1.5x flags added; 0 rows deleted,40,40,"1 negative, 2 outliers flagged",flag-only default
+text hygiene,str_squish + empty string -> NA,40,40,0 structural changes,low-risk auto

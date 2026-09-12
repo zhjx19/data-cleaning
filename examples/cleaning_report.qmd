@@ -1,0 +1,234 @@
+---
+title: "销售数据清洗报告"
+format: PrettyTypst-typst
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+<!-- 本报告是 templates/cleaning_report_skeleton.qmd 的真实数据实例：
+     输入 examples/messy_sales.csv（43 行故意做脏的销售数据），
+     渲染：Git Bash 下 env -u LC_CTYPE -u LANG -u LC_ALL quarto render cleaning_report.qmd -->
+
+# 销售数据清洗报告
+
+本报告由 **data-cleaning skill（Agent + R tidyverse）** 生成。
+
+流水线：**概览诊断 → 逐项清洗（代码/结果/说明） → 整洁数据 → 总结**。
+
+数据来源：**原始数据**（`raw` 只读，所有改动作在 `clean` 副本上完成）。
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  fig.width  = 6.6,
+  fig.height = 3.2,
+  out.width  = "100%",
+  fig.align  = "center"
+)
+if (requireNamespace("ragg", quietly = TRUE)) {
+  knitr::opts_chunk$set(dev = "ragg_png")
+}
+
+library(tidyverse)
+library(janitor)
+
+miss_cnt = \(df) {
+  vapply(
+    names(df),
+    \(col) sum(is.na(df[[col]]) |
+      (is.character(df[[col]]) & trimws(df[[col]]) == "")),
+    integer(1)
+  )
+}
+
+raw   = readr::read_csv("messy_sales.csv", show_col_types = FALSE)
+clean = raw
+```
+
+## 概览 · 一屏看懂
+
+### 数据信息
+
+| 源               | 清洗前                     | 清洗后                     | 输出                              |
+|------------------|----------------------------|----------------------------|-----------------------------------|
+| `messy_sales.csv`| `r nrow(raw)` 行×`r ncol(raw)` 列 | `r nrow(clean)` 行×`r ncol(clean)` 列 | `output/messy_sales_cleaned.csv` |
+
+### 脏在哪 · 诊断总表
+
+| # | 脏在哪      | 位置/样例                            | 规模 | 处置                        |
+|---|-------------|--------------------------------------|-----:|-----------------------------|
+| 1 | 缺失        | `Revenue(CNY)` 2 处、`Store` 1 处    |    3 | 保留 NA，报告不盲填         |
+| 2 | 完全重复行  | 订单 1001/1016/1030 各录入两次       |    3 | `distinct()` 删除           |
+| 3 | 主键重复    | 去重后 `order_id` 无重复             |    0 | —                           |
+| 4 | 负值        | 订单 1013 收入 -120                  |    1 | 打标 `revenue_negative`     |
+| 5 | 离群值      | 99999 与 2058（IQR 1.5×）            |    2 | 打标 `revenue_outlier_flag` |
+| 6 | 类别混杂    | `Online/online/ONLINE/线上/…`        |    8 | `case_when()` 归并为 2 类   |
+| 7 | 日期多格式  | `Y/m/d`、`Y-m-d`、`Ymd`              |    3 | `parse_date_time()` 统一    |
+| 8 | 非数值收入  | `¥1,234`、`¥2,058` 带货币符号        |    2 | `parse_number()` 解析       |
+| 9 | 列名不规范  | `Order ID`、`Revenue(CNY)`           |    2 | `make_clean_names()`        |
+
+> 主线：**先看懂「脏在哪」，再逐项清洗并保留证据（异常打标），最后交付整洁数据 + 前后对照总结**。
+
+## 1. 脏数据诊断（自动，不改数据）
+
+```{r}
+miss_tbl = data.frame(
+  字段 = names(raw),
+  缺失 = unname(miss_cnt(raw))
+) |>
+  arrange(desc(缺失))
+
+miss_tbl |>
+  filter(缺失 > 0) |>
+  knitr::kable(format = "pipe", caption = "缺失 / 空白")
+```
+
+```{r}
+miss_tbl |>
+  filter(缺失 > 0) |>
+  ggplot(aes(x = reorder(字段, 缺失), y = 缺失)) +
+    geom_col(fill = "#c0392b") +
+    coord_flip() +
+    labs(x = NULL, y = "缺失 / 空白数")
+```
+
+类别列有 `r n_distinct(raw$Category)` 种写法、日期列 3 种格式、
+收入列混入带 `¥` 的文本——均见 §2 逐项处理。
+
+## 2. 逐项清洗（代码 + 结果 + 说明）
+
+### 2.1 列名 → snake_case
+
+```{r}
+clean = clean |>
+  rename_with(\(x) janitor::make_clean_names(x, case = "snake"))
+```
+
+**说明**：`Order ID` → `order_id`、`Revenue(CNY)` → `revenue_cny`，为编程式访问铺路。
+
+### 2.2 完全重复行
+
+```{r}
+n0 = nrow(clean)
+clean = clean |> distinct()
+```
+
+**结果**：`r n0` 行 → `r nrow(clean)` 行（删除 `r n0 - nrow(clean)` 行全同记录）。
+订单 1001/1016/1030 各被录入了两次，属完全重复，按默认决策表可直接删除并记录数量。
+
+### 2.3 日期多格式统一（保留原列 + 失败 flag）
+
+```{r}
+clean = clean |>
+  mutate(
+    sale_date_raw = sale_date,
+    sale_date = suppressWarnings(
+      lubridate::parse_date_time(
+        sale_date_raw,
+        orders = c("Y/m/d", "Y-m-d", "Ymd"),
+        quiet  = TRUE
+      ) |>
+        as.Date()),
+    date_parse_fail = is.na(sale_date) & !is.na(sale_date_raw)
+  )
+```
+
+**结果**：`r sum(!is.na(clean$sale_date))` 行解析成功，失败 `r sum(clean$date_parse_fail)` 行。
+
+**说明**：三种格式一次给出；**保留原列** `sale_date_raw`，新增解析列与失败 flag，不覆盖原字段。
+
+### 2.4 收入文本解析（货币符号 + 千分位）
+
+```{r}
+clean = clean |>
+  mutate(
+    revenue_raw = as.character(revenue_cny),
+    revenue_num = readr::parse_number(revenue_raw),
+    revenue_parse_fail = is.na(revenue_num) & !is.na(revenue_raw)
+  )
+```
+
+**结果**：`¥1,234`、`¥2,058` 两行文本收入解析为数值，原列保留为 `revenue_raw`。
+
+**说明**：`readr` 的 locale 猜型会把纯千分位 `"1,234"` 自动转成数值（见 SKILL.md 坑表），
+但带货币符号 `¥` 时列保持文本，需显式 `parse_number()`——这正是「数值含单位/货币」默认
+决策行覆盖的情形。
+
+### 2.5 类别归并（不用 TRUE 默认分支）
+
+```{r}
+clean = clean |>
+  mutate(category_norm = case_when(
+    str_detect(str_to_lower(str_squish(category)), "^on")  ~ "线上",
+    str_detect(str_to_lower(str_squish(category)), "^off") ~ "线下",
+    str_squish(category) == "线上" ~ "线上",
+    str_squish(category) == "线下" ~ "线下"
+  ))
+```
+
+**结果**：
+
+```{r}
+clean |>
+  count(category_norm) |>
+  knitr::kable(format = "pipe", caption = "归并后渠道类别")
+```
+
+**说明**：`r n_distinct(raw$Category)` 种写法归并为 2 类；**故意不写 `TRUE ~ 默认值` 分支**，
+未匹配的会得 NA 并被统计（本例 `r sum(is.na(clean$category_norm) & !is.na(clean$category))` 行），
+避免 `case_when` 默认分支静默吞 NA 的经典陷阱。
+
+### 2.6 异常打标（只标不删）
+
+```{r}
+q   = quantile(clean$revenue_num, c(0.25, 0.75), na.rm = TRUE)
+iqr = IQR(clean$revenue_num, na.rm = TRUE)
+
+clean = clean |>
+  mutate(
+    revenue_negative     = !is.na(revenue_num) & revenue_num < 0,
+    revenue_outlier_flag = !is.na(revenue_num) &
+      (revenue_num < q[[1]] - 1.5 * iqr |
+       revenue_num > q[[2]] + 1.5 * iqr)
+  )
+```
+
+**结果**：负值 `r sum(clean$revenue_negative, na.rm = TRUE)` 行（订单 1013 的 -120），
+离群 `r sum(clean$revenue_outlier_flag, na.rm = TRUE)` 行（99999 与 2058）。
+
+**说明**：异常值默认打标不删除，原值保留供复核；删除/截尾必须说明规则并经用户确认。
+
+## 3. 整洁数据
+
+```{r}
+clean |>
+  select(order_id, store, sale_date, revenue_num, category_norm,
+         revenue_negative, revenue_outlier_flag) |>
+  head(8) |>
+  knitr::kable(format = "pipe", caption = "清洗后前 8 行（关键列）")
+```
+
+## 4. 清洗总结（前后对照 + 日志）
+
+| 指标       | 清洗前                  | 清洗后                   |
+| ---------- | ----------------------- | ------------------------ |
+| 行数       | `r nrow(raw)`           | `r nrow(clean)`          |
+| 列数       | `r ncol(raw)`           | `r ncol(clean)`          |
+| 缺失单元格 | `r sum(miss_cnt(raw))`  | `r sum(miss_cnt(clean))` |
+
+清洗后缺失单元格多出的 4 处来自「保留原列」策略的镜像缺失
+（`revenue_raw`/`revenue_num` 与 `revenue_cny` 对应同样 2 行），真实缺失仍为 3 处，
+未做任何填补——是否填补属业务决策，见「遗留」。
+
+### 做了什么（一句话清单）
+
+- 审计出 9 类脏：缺失、重复、负值、离群、类别混杂、日期多格式、非数值收入、列名不规范
+- 清洗顺序：列名 → 去重 → 日期 → 收入 → 类别 → 异常打标
+- 原则：异常只打标、缺失不盲填、原始不覆盖、每步留证据
+
+### 数据字典 / 日志 / 遗留
+
+- **数据字典**：新增列 `sale_date_raw/sale_date/date_parse_fail`、`revenue_raw/revenue_num/revenue_parse_fail`、`category_norm`、`revenue_negative/revenue_outlier_flag`；完整口径见清洗日志
+- **清洗日志**：`output/cleaning_log.csv`（7 步，每步含规则、前后行数、影响、决策类型）
+- **遗留**：3 处缺失是否填补待业务确认；负值与离群行的复核与处置；类别词典（线上/线下）如需扩展须同步 `case_when` 映射

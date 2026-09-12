@@ -1,0 +1,22 @@
+title: PrettyTypst
+author: Nicola Rennie
+version: 0.0.2
+quarto-required: ">=1.4.11"
+contributes:
+  project:
+    project:
+      type: book
+  formats: 
+    typst:
+      papersize: a4
+      margin:
+        x: 2cm
+        y: 2cm
+      font-paths: Ubuntu
+      template-partials:
+        - typst-template.typ
+        - typst-show.typ
+      filters:
+        - PrettyTypst.lua
+      format-resources:
+        - logo.png

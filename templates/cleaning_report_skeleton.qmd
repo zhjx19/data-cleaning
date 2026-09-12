@@ -8,8 +8,11 @@ execute:
 ---
 
 <!-- 声明约定：
-  1. 格式：PrettyTypst-typst（Quarto 扩展已 vendor 在 _extensions/PrettyTypst/，离线可用，
-     字体链含 CJK 回退，中文跨平台可渲染）。可选 logo：YAML 增加
+  1. 格式：PrettyTypst-typst（Quarto 扩展已 vendor 在本 skill 的 _extensions/PrettyTypst/，
+     离线可用，字体链含 CJK 回退，中文跨平台可渲染）。
+     生成报告时：把 _extensions/ 整个复制到报告工作目录、与本 .qmd 同级再渲染
+     （Quarto 在含点开头的目录如 .zcode 下不做向上扩展发现）。
+     可选 logo：YAML 增加
        typst-logo:
          path: "logo.png"    ← 路径相对本 .qmd
   2. 渲染环境（实测坑）：Git Bash 里 LC_CTYPE=C.UTF-8 会导致 R 启动 locale 切换失败，

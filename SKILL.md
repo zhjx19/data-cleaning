@@ -152,7 +152,7 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 
 - **清洗数据**：原始文件名加 `_cleaned`，不覆盖原文件。
 - **清洗日志**：步骤、规则、影响行列数、用户决策点。
-- **质量问题报告**：优先 `.qmd`，默认 `format: PrettyTypst-typst` → 一份 PDF 文档（Quarto 扩展已 vendor 在 `_extensions/PrettyTypst/`，离线可用；字体链 Ubuntu → Microsoft YaHei → PingFang SC → Noto Sans CJK SC，中文跨平台确定性渲染）。仅当用户点名要幻灯片时，才用 `format: revealjs`（不依赖扩展）。渲染规则：**Git Bash 下先 `env -u LC_CTYPE -u LANG -u LC_ALL quarto render <文件>.qmd`**（LC_CTYPE=C.UTF-8 使 R 启动 locale 切换失败，chunk 内中文被转义成 `<U+XXXX>` 而解析报错）；PowerShell/cmd 直接 `quarto render`。`.qmd` 写完后同样剥 BOM。构建图表依赖 `ggplot2 + gridExtra`（勿依赖 `patchwork`）。骨架见 `templates/cleaning_report_skeleton.qmd`。
+- **质量问题报告**：优先 `.qmd`，默认 `format: PrettyTypst-typst` → 一份 PDF 文档（Quarto 扩展已 vendor 在 `_extensions/PrettyTypst/`，离线可用；字体链 Ubuntu → Microsoft YaHei → PingFang SC → Noto Sans CJK SC，中文跨平台确定性渲染）。**渲染布局：把 `_extensions/` 整个复制到报告工作目录、与实例化后的 `.qmd` 同级再渲染**（Quarto 在含点开头的目录如 `.zcode` 下不做向上扩展发现；同目录布局全环境可用）。仅当用户点名要幻灯片时，才用 `format: revealjs`（不依赖扩展）。渲染规则：**Git Bash 下先 `env -u LC_CTYPE -u LANG -u LC_ALL quarto render <文件>.qmd`**（LC_CTYPE=C.UTF-8 使 R 启动 locale 切换失败，chunk 内中文被转义成 `<U+XXXX>` 而解析报错）；PowerShell/cmd 直接 `quarto render`。`.qmd` 写完后同样剥 BOM。构建图表依赖 `ggplot2 + gridExtra`（勿依赖 `patchwork`）。骨架见 `templates/cleaning_report_skeleton.qmd`，真实数据实例见 `examples/cleaning_report.qmd`。
 - **问题清单**：主键不明、N:N 风险、口径冲突、异常值策略、需人工确认的类别映射。
 - **数据字典**：字段名、类型、含义、取值范围、缺失率、清洗规则。
 

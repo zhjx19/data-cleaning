@@ -1,0 +1,4 @@
+# Quarto render intermediates / caches
+.quarto/
+# Render-derived artifacts (regenerated on render)
+examples/logo.png
