@@ -1,0 +1,88 @@
+
+#let PrettyTypst(
+  // The document title.
+  title: "PrettyTypst",
+
+  // Logo in top right corner.
+  typst-logo: none,
+
+  // The document content.
+  body
+) = {
+
+  // Set document metadata.
+  set document(title: title)
+  
+  // Configure pages.
+  set page(
+    margin: (left: 2cm, right: 1.5cm, top: 2cm, bottom: 2cm),
+    numbering: "1",
+    number-align: right,
+    background: place(right + top, rect(
+      fill: rgb("#E6E6FA"),
+      height: 100%,
+      width: 3cm,
+    ))
+  )
+  
+  // Set the body font.
+  // Local divergence from upstream (data-cleaning skill): explicit CJK
+  // fallback chain so Chinese text renders deterministically on Windows
+  // (Microsoft YaHei), macOS (PingFang SC) and Linux (Noto Sans CJK SC)
+  // instead of relying on typst's implicit font discovery.
+  set text(10pt, font: ("Ubuntu", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC"))
+
+  // Configure headings.
+  show heading.where(level: 1): set block(below: 0.8em)
+  show heading.where(level: 1): underline
+  show heading.where(level: 2): set block(above: 0.5cm, below: 0.5cm)
+
+  // Links should be purple.
+  show link: set text(rgb("#800080"))
+
+  // Configure light purple border.
+  show figure: it => block({
+    move(dx: -3%, dy: 1.5%, rect(
+      fill: rgb("FF7D79"),
+      inset: 0pt,
+      move(dx: 3%, dy: -1.5%, it.body)
+    ))
+  })
+
+  // Purple border column
+  grid(
+    columns: (1fr, 0.75cm),
+    column-gutter: 2.5cm,
+
+    // Title.
+    pad(bottom: 1cm, text(font: ("Ubuntu", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC"), 20pt, weight: 800, upper(title))),
+
+    // The logo in the sidebar.
+    context {
+      set align(right)
+      // Logo.
+      if typst-logo != none {
+        let img = image(typst-logo.path, width: 1.5cm)
+        let img-size = measure(img)
+        
+        grid(
+          columns: (img-size.width, 1cm),
+          column-gutter: 16pt,
+          rows: img-size.height,
+          img,
+        )
+      }
+    },
+    
+    // The main body text.
+    {
+      set par(justify: true)
+      body
+      v(1fr)
+    },
+  
+
+  )
+}
+
+
