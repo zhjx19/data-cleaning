@@ -29,7 +29,7 @@ execute:
 
 # 数据清洗报告
 
-本报告由 **data-cleaning skill（opencode + R tidyverse）** 生成。
+本报告由 **data-cleaning skill（Agent + R tidyverse）** 生成。
 
 流水线：**概览诊断 → 逐项清洗（代码/结果/说明） → 整洁数据 → 总结**。
 
@@ -137,7 +137,7 @@ clean = clean |>
 **代码**
 
 ```{r}
-uchar = function(x) {
+uchar = \(x) {
   na_if(stringr::str_squish(x), "")
 }
 clean = clean |>
@@ -189,14 +189,14 @@ clean = clean |>
     flag_unrealistic = !is.na(value) & (value < 0 | value > 120)
   )
 
-q = quantile(clean$value_spent, c(0.25, 0.75), na.rm = TRUE)
-i = IQR(clean$value_spent, na.rm = TRUE)
+q = quantile(clean$value, c(0.25, 0.75), na.rm = TRUE)
+i = IQR(clean$value, na.rm = TRUE)
 
 clean = clean |>
   mutate(
-    flag_outlier = !is.na(value_spent) &
-      (value_spent < q[[1]] - 1.5 * i |
-       value_spent > q[[2]] + 1.5 * i)
+    flag_outlier = !is.na(value) &
+      (value < q[[1]] - 1.5 * i |
+       value > q[[2]] + 1.5 * i)
   )
 ```
 
