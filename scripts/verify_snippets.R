@@ -281,6 +281,27 @@ if (!any(is.na(gbk_lines))) {
   check("T15 GBK csv", FALSE, "iconv GBK unavailable on this R build")
 }
 
+## T16 join key consistency (five-check + anti_join) ------------------------
+# ASCII-only on purpose: this script must run under any locale (broken
+# LC_CTYPE garbles non-ASCII source, see SKILL.md pitfalls).
+ord = tibble(customer_id = c(123, 124))
+cus = tibble(customer_id = c("00123", "00124"))
+key_profile = \(df, key_col) tibble(
+  key_type      = class(df[[key_col]])[1],
+  n_unique      = n_distinct(df[[key_col]]),
+  na_count      = sum(is.na(df[[key_col]])),
+  leading_zeros = sum(str_detect(str_trim(as.character(df[[key_col]])), "^0[0-9]")),
+  dup_rows      = sum(duplicated(df[[key_col]]) & !is.na(df[[key_col]]))
+)
+kp_l = key_profile(ord, "customer_id")
+kp_r = key_profile(cus, "customer_id")
+check("T16 key type mismatch detected", kp_l$key_type != kp_r$key_type)
+check("T16 leading zeros detected", kp_r$leading_zeros == 2)
+# naive fix (unify to character) still cannot match -- semantics need the user
+naive = ord |> mutate(customer_id = as.character(customer_id))
+check("T16 naive fix still unmatched (trap documented)",
+      nrow(naive |> anti_join(cus, by = "customer_id")) == 2)
+
 ## ---------------------------------------------------------------- summary
 cat(sprintf("\nSummary: %d check(s), %d failure(s)\n", total, failures))
 if (failures > 0) quit(status = 1)

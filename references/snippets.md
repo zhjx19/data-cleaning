@@ -209,3 +209,35 @@ relationship = case_when(
   TRUE ~ "N:N"
 )
 ```
+
+### 键一致性检查（join 前五查）
+
+> 类型/格式不一致是**静默错匹配**的头号来源：一边 123、一边 "00123"，`as.numeric()` 一转
+> 就把不同实体合并成一行，且不报任何错。统一 character 是机械步骤，**前导零是否有业务
+> 语义是口径问题——必须问用户**。
+
+```r
+key_profile = \(df, key_col) tibble(
+  键类型     = class(df[[key_col]])[1],
+  唯一值数   = n_distinct(df[[key_col]]),
+  缺失数     = sum(is.na(df[[key_col]])),
+  前导零行数 = sum(str_detect(str_trim(as.character(df[[key_col]])), "^0[0-9]")),
+  重复行数   = sum(duplicated(df[[key_col]]) & !is.na(df[[key_col]]))
+)
+key_profile(left, "customer_id")
+key_profile(right, "customer_id")
+```
+
+### 连接后验证（双向未匹配 + 膨胀 + 抽样核对）
+
+```r
+res = left_join(left, right, by = "customer_id")
+unmatched_l = left  |> anti_join(right, by = "customer_id")
+unmatched_r = right |> anti_join(left,  by = "customer_id")
+# 未匹配行数 > 0：先回键一致性五查找原因，禁止静默补 NA 继续走。
+# 抽样核对键映射（防"错误匹配"——验证清单拦不住错配，只能人工抽查）：
+set.seed(1)
+res |>
+  filter(customer_id %in% sample(unique(left$customer_id), min(10, n_distinct(left$customer_id)))) |>
+  select(any_of(c("customer_id", "姓名", "地区")))
+```
