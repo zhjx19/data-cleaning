@@ -127,7 +127,8 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 | 异常值标记 | 异常值 flag（三法并列） | 默认 IQR；重尾/小样本用 MAD；正态大样本可用 z-score |
 | 多格式读取 | 多格式读取 read_any | CSV/Excel/RDS/Parquet；需 `readxl`/`arrow`；中文 CSV 用 `read_csv_anyenc` 自动判码 |
 | 清洗日志 | 结构化清洗日志 | 每步一行，高风险项记用户决策 |
-| 连接关系判定 | 连接前关系诊断 | 输出 1:1 / N:1 / 1:N / N:N |
+| 连接关系判定 | 连接前关系诊断 | 输出 1:1 / N:1 / 1:N / N:N；附键一致性五查与连接后验证 |
+| 中文业务格式 | 金额/中文日期/全角转半角 | "1,234.50元"、`Y年m月d日`、全角 `chartr`；禁直接 as.numeric |
 
 多文件场景在单个 `.R` 脚本内用 `read_any()` 按扩展名读入多张表，不依赖单 `input`。
 
@@ -141,7 +142,7 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 | 日期解析失败 | 保留原字段，新增解析字段与失败 flag |
 | 数值含单位/货币/百分号 | 解析为数值并保留或记录原始口径 |
 | 类别大小写/中英/首尾空格混用 | 统一大小写 + 词典归并（`case_when`）|
-| 日期多种格式混用 | `parse_date_time(orders = ...)` 统一为 `Date` |
+| 日期多种格式混用 | Y-M-D 族（含中文"2023年1月5日"、紧凑 `20230108`）直接 `ymd()`；顺序不同（dmy/mdy）才用 `parse_date_time(orders = ...)`，中文写 `"Y年m月d日"` |
 | 主键重复（同 ID 但字段不全相同） | 保留首条 + 打标记，不静默删 |
 | `case_when(TRUE ~ "默认值")` | 会把 `NA` 一并当默认值，构成业务假设——必须说清并在日志标记 |
 | 缺失率 < 5%（非关键列） | 可默认填补（数值=中位数、分类=众数），日志记录填补口径 |

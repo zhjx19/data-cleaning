@@ -149,6 +149,39 @@ result = input |> tidyr::fill(地区, .direction = "down")
 # 前提：与用户确认"空 = 继承上一行"这一业务语义；日志记录填充列与影响范围
 ```
 
+## 中文业务格式解析（金额 / 日期 / 全角）
+
+> 决策表"数值含单位/货币/百分号"与"日期多种格式混用"两行的中文场景代码。
+> 坑：直接 `as.numeric("1,234.50元")` **不报错、全列变 NA**（仅警告），必须先解析。
+
+```r
+# 金额："1,234.50元"、"¥2,058"、"342.35元"、"-120" → 数值
+# parse_number 无惧千分位与前后缀（元/¥都行）；对比 as.numeric("342.35元") = NA
+result = input |>
+  mutate(
+    revenue_raw = as.character(金额),
+    revenue_num = readr::parse_number(revenue_raw),
+    revenue_parse_fail = is.na(revenue_num) & !is.na(revenue_raw)
+  )
+
+# 中文日期："2023年1月5日" 混在数字格式里——ymd() 一发全吃（年月日/斜杠/横杠/紧凑，
+# 直接返回 Date）。仅当顺序不是 Y-M-D（如 dmy/mdy）或部分日期（只到月）才用
+# parse_date_time(orders = c(...))，orders 里中文写 "Y年m月d日"。
+result = input |>
+  mutate(
+    date_raw = 日期,
+    date = ymd(date_raw),
+    date_parse_fail = is.na(date) & !is.na(date_raw)
+  )
+
+# 全角数字/字母 → 半角（base chartr，无 stringi 依赖）；转换后再做数值解析
+to_half = \(x) chartr(
+  "０１２３４５６７８９ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ",
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+  x)
+result = input |> mutate(金额 = to_half(as.character(金额)))
+```
+
 ## 多格式读取（CSV / Excel / RDS / Parquet）
 
 多文件场景直接在 `.R` 脚本内按扩展名读入多张表，不依赖单 `input`（需 `readxl` / `arrow`）：

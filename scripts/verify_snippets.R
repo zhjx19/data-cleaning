@@ -322,6 +322,22 @@ check("T18 fill down inherits group labels",
       filled$region[2] == "\u534e\u4e1c" && filled$region[3] == "\u534e\u4e1c" &&
         filled$region[5] == "\u534e\u5317")
 
+## T17 Chinese business formats: amounts / dates / full-width ---------------
+amt = tibble(revenue_raw = c("1,234.50\u5143", "\uffe52,058", "-120",
+                             "342.35\u5143"))
+amt2 = amt |> mutate(revenue_num = readr::parse_number(revenue_raw))
+check("T17 parse yuan amounts",
+      all(abs(amt2$revenue_num - c(1234.5, 2058, -120, 342.35)) < 1e-9))
+cn_date = tibble(date_raw = c("2023\u5e741\u67085\u65e5", "2023/01/06",
+                              "2023-01-07", "20230108"))
+cn2 = cn_date |> mutate(date = ymd(date_raw))
+check("T17 ymd covers chinese + mixed formats",
+      all(!is.na(cn2$date)) && cn2$date[1] == as.Date("2023-01-05") &&
+        class(cn2$date)[1] == "Date")
+half = chartr("\uff10\uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18\uff19",
+              "0123456789", "\uff11\uff12\uff13")
+check("T17 fullwidth to halfwidth digits", half == "123" && as.numeric(half) == 123)
+
 ## ---------------------------------------------------------------- summary
 cat(sprintf("\nSummary: %d check(s), %d failure(s)\n", total, failures))
 if (failures > 0) quit(status = 1)
