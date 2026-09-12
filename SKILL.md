@@ -192,6 +192,7 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 | `list.files()` 找不到明知存在的文件 | locale 非 UTF-8 时（R 启动报 `Setting LC_CTYPE=C.UTF-8 failed`）中文文件名条目被静默丢弃；脚本/模板一律用 ASCII 文件名，或改用 `file.exists()`/`Sys.glob()` 定位 |
 | 中文 CSV 读入后是 `\xd0\xd5` 式乱码 | 源文件是 GBK（Excel/老系统导出），且 `readr` **不报错而是静默保留原始字节**：用片段 `read_csv_anyenc` 读前判码（`validUTF8` 检查文件头），按 GB18030 读入，并在清洗日志记录源编码 |
 | 异常检测/数值处理无声失效 | 汇总行混入使数值列被猜成 character，`where(is.numeric)` **静默跳过**该列（不报错）——清洗前先跑类型断言（片段"结构探测"），确认每列真实类型 |
+| `filter(!if_any(...))` 静默丢行 | `if_any` 的 NA 会传播：所选列存在 NA 且其余列不匹配时整行按 FALSE 丢弃；取反检测必须先 `coalesce(x, "")` 兜底（见片段"结构探测"） |
 | revealjs/幻灯片 format 出错 | HTML 幻灯片用 `format: revealjs`；若要求 `quarto-talks-revealjs`，须先联网装扩展 `quarto add quarto-ext/quarto-talks`，否则渲染报 "Unable to read the extension" |
 
 ## 自检清单

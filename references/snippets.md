@@ -134,9 +134,14 @@ result = input |>
 
 ```r
 # 1) 疑似汇总行：关键文本列命中 总计/小计/合计/Total
+#    ⚠ 取反过滤必须先 coalesce(x, "")：if_any 的 NA 会传播，filter 把 NA 行当 FALSE
+#    整行静默丢弃（Region 为 NA 的正常数据行会被误删）
 sum_rows = input |>
   filter(if_any(where(is.character), \(x) str_detect(str_squish(x), "^(总计|小计|合计|Total)$")))
 # 命中：先剥离（保留原文件可复核、记录剔除行数），再做任何数值统计
+clean = input |>
+  filter(!if_any(where(is.character),
+                 \(x) str_detect(str_squish(coalesce(x, "")), "^(总计|小计|合计|Total)$")))
 
 # 2) 类型断言：数值列被猜成 character 的典型信号（汇总行/带单位文本混入）
 #    where(is.numeric) 会【静默跳过】character 列——先断言类型，再上 across/异常检测

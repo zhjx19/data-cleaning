@@ -338,6 +338,36 @@ half = chartr("\uff10\uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18\uff19",
               "0123456789", "\uff11\uff12\uff13")
 check("T17 fullwidth to halfwidth digits", half == "123" && as.numeric(half) == 123)
 
+## T19 integration: snippets compose into one full clean pipeline -----------
+raw19 = tibble(
+  order_id = c("001", "002", "003", "004", "004", "005"),
+  region   = c("\u534e\u4e1c", NA, NA, "\u534e\u5317", "\u534e\u5317", "\u534e\u5317"),
+  amount   = c("1,234.50\u5143", "342.35\u5143", "\u603b\u8ba1", "890", "890", "-120"),
+  date     = c("2023\u5e741\u67085\u65e5", "2023/01/06", "2023-01-07",
+               "20230108", "20230108", "2023-01-09")
+)
+clean19 = raw19 |>
+  # coalesce guards against if_any NA-propagation silently dropping rows
+  filter(!if_any(where(is.character),
+                 \(x) str_detect(str_squish(coalesce(x, "")),
+                                 "^(\u603b\u8ba1|\u5c0f\u8ba1|\u5408\u8ba1|Total)$"))) |>
+  distinct() |>
+  tidyr::fill(region, .direction = "down") |>
+  mutate(
+    amount_num      = readr::parse_number(amount),
+    date            = ymd(date),
+    amount_negative = !is.na(amount_num) & amount_num < 0
+  )
+check("T19 integration rows 6 -> 4 (summary + dup stripped, no NA loss)",
+      nrow(clean19) == 4)
+check("T19 integration region filled (structural missing)",
+      !any(is.na(clean19$region)))
+check("T19 integration amounts + dates parsed",
+      all(abs(clean19$amount_num - c(1234.5, 342.35, 890, -120)) < 1e-9) &&
+        all(!is.na(clean19$date)))
+check("T19 integration negative flagged, nothing deleted",
+      sum(clean19$amount_negative) == 1 && nrow(clean19) == 4)
+
 ## ---------------------------------------------------------------- summary
 cat(sprintf("\nSummary: %d check(s), %d failure(s)\n", total, failures))
 if (failures > 0) quit(status = 1)
