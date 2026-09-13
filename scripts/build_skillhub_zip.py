@@ -29,9 +29,12 @@ ALLOWED_EXT = {".md", ".txt", ".json", ".yaml", ".yml", ".js", ".cjs", ".mjs",
                ".ts", ".py", ".sh", ".R", ".r"}
 EXCLUDE_DIRS = {"_extensions", "templates", "examples", "output", ".git",
                 "dist", ".quarto", ".github"}
-# root files to ship (extensionless LICENSE allowed -- tidy-data passed with it)
+# root files to ship. LICENSE is excluded: the hub validator rejects license
+# files (it bans them despite tidy-data having passed with one earlier --
+# validator inconsistent). The MIT license lives in the GitHub repo; hub
+# listings link there via README.
 ROOT_FILES = ["SKILL.md", "README.md", "README.en.md", "CHANGELOG.md",
-              "LICENSE", "test-prompts.json"]
+              "test-prompts.json"]
 def collect():
     """Yield (archive_path, source_path) pairs for the compliant package."""
     for name in ROOT_FILES:
