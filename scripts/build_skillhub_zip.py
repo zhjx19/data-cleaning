@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # build_skillhub_zip.py -- build a SkillHub-compliant distribution package.
 #
-# SkillHub (skillhub.cn, iflytek) validates uploads against a file-type
-# whitelist: .md .txt .json .yaml .yml .js .cjs .mjs .ts .py .sh .png .jpg .svg
-# (see iflytek/skillhub docs/07-skill-protocol.md section 8.3). Binary assets
-# (fonts/PDF) and Quarto files are rejected as non-compliant.
+# SkillHub (skillhub.cn, iflytek) rejects BINARY files on upload -- the
+# validator's message names them ("禁止上传二进制文件"), even though the written
+# whitelist (docs/07-skill-protocol.md section 8.3) lists .png/.jpg/.svg. The
+# written whitelist lags the implementation; empirically only text files pass
+# (tidy-data's text-only upload passed; a png in ours was rejected).
+# So the hub package ships text files ONLY.
 #
 # The GitHub repo keeps the FULL kit (vendored fonts, PDF report, Quarto
 # template); this script derives a whitelist-compliant zip for the hub:
@@ -24,16 +26,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "dist", "data-cleaning-skillhub.zip")
 
 ALLOWED_EXT = {".md", ".txt", ".json", ".yaml", ".yml", ".js", ".cjs", ".mjs",
-               ".ts", ".py", ".sh", ".png", ".jpg", ".svg", ".R", ".r"}
+               ".ts", ".py", ".sh", ".R", ".r"}
 EXCLUDE_DIRS = {"_extensions", "templates", "examples", "output", ".git",
                 "dist", ".quarto", ".github"}
 # root files to ship (extensionless LICENSE allowed -- tidy-data passed with it)
 ROOT_FILES = ["SKILL.md", "README.md", "README.en.md", "CHANGELOG.md",
               "LICENSE", "test-prompts.json"]
-# files remapped into the conventional assets/ directory
-ASSET_MAP = {"examples/showcase_dirty_overview.png": "assets/showcase_dirty_overview.png"}
-
-
 def collect():
     """Yield (archive_path, source_path) pairs for the compliant package."""
     for name in ROOT_FILES:
@@ -59,12 +57,6 @@ def collect():
                 print("  skip (type):", rel)
                 continue
             yield rel, src
-    for src_rel, arc in ASSET_MAP.items():
-        p = os.path.join(ROOT, src_rel)
-        if os.path.isfile(p):
-            yield arc, p
-
-
 def main():
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     entries = list(collect())
