@@ -2,3 +2,6 @@
 .quarto/
 # Render-derived artifacts (regenerated on render)
 examples/logo.png
+
+# SkillHub build output
+dist/
