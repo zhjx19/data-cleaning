@@ -12,8 +12,10 @@
 # template); this script derives a whitelist-compliant zip for the hub:
 #   SKILL.md + root docs + references/ + scripts/ + assets/ (showcase png)
 #
-# Empirical note: tidy-data passed SkillHub validation with .R files, so .R is
-# treated as accepted despite missing from the written whitelist.
+# Empirical note: the written whitelist has NO .R entry, and SkillHub
+# explicitly rejected scripts/verify_snippets.R by name (round 3) -- while the
+# sister skill tidy-data once passed with .R files. Validator is inconsistent
+# across uploads; treat .R as NOT shippable. Hub package = text docs only.
 #
 # Usage: python scripts/build_skillhub_zip.py   (from anywhere)
 # Output: dist/data-cleaning-skillhub.zip
@@ -25,10 +27,11 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "dist", "data-cleaning-skillhub.zip")
 
-ALLOWED_EXT = {".md", ".txt", ".json", ".yaml", ".yml", ".js", ".cjs", ".mjs",
-               ".ts", ".py", ".sh", ".R", ".r"}
+ALLOWED_EXT = {".md", ".txt", ".json", ".yaml", ".yml"}
+# .py/.R excluded too: .py packaging tooling is meaningless without the repo,
+# and .R got named in a rejection. Hub package = pure documentation.
 EXCLUDE_DIRS = {"_extensions", "templates", "examples", "output", ".git",
-                "dist", ".quarto", ".github"}
+                "dist", ".quarto", ".github", "scripts"}
 # root files to ship. LICENSE is excluded: the hub validator rejects license
 # files (it bans them despite tidy-data having passed with one earlier --
 # validator inconsistent). The MIT license lives in the GitHub repo; hub
