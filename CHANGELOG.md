@@ -14,6 +14,9 @@
 - **三大交付物**：`*_cleaned` 数据（原始永不覆盖）+ 结构化清洗日志（每步一行）+ PrettyTypst 排版质量报告 PDF（vendored 扩展，中文跨平台渲染，离线可用）。
 - **执行协议**：Rscript + JSON（stdout 纯 JSON）、GBK/GB18030 静默乱码判码（`read_csv_anyenc`）、Windows 全套坑表（BOM/locale/编码/渲染）。
 
+### Added
+- README.en.md 双语入口（house-style 语言互链）。
+
 ### 质量
 - 43 项回归全绿：`scripts/verify_snippets.R`（11 组片段 + 模板禁用词 lint，任意 locale 可跑）+ 端到端示例（43 行做脏数据 → 清洗日志 → PDF 报告）。
 - 红队两轮推演驱动：缺失三档线、键一致性三层闸、结构探测、跨 runtime 中性化均由推演发现并修复。
