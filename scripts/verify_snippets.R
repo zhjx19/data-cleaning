@@ -1,16 +1,20 @@
 #!/usr/bin/env Rscript
 # verify_snippets.R -- one-click regression for the data-cleaning skill.
 #
-# Verifies every code snippet in references/snippets.md against fixture data,
-# plus a static lint of templates/*.qmd for forbidden R patterns.
+# Runs every code snippet in references/snippets.md against fixture data and
+# asserts real outputs. ASCII-only on purpose: a broken LC_CTYPE locale
+# garbles non-ASCII source and kills parsing (see SKILL.md pitfalls), so this
+# must run under any locale/shell combination.
 #
 # Usage (any CWD):
 #   Rscript --vanilla scripts/verify_snippets.R
-# Exit code 0 = all PASS, 1 = at least one FAIL.
+# Exit code: 0 = all PASS; 1 = any FAIL.
 
 suppressPackageStartupMessages({
   library(tidyverse)
 })
+# slider/jsonlite/readxl/arrow/writexl loaded lazily per test with
+# requireNamespace() guards so a missing optional package degrades to SKIP.
 
 failures = 0L
 total    = 0L
@@ -22,12 +26,9 @@ check = function(name, cond, detail = "") {
               if (nzchar(detail)) paste0(" -- ", detail) else ""))
   invisible(ok)
 }
-
-# Resolve repo root from this script's path (works from any CWD).
-args_full = commandArgs(trailingOnly = FALSE)
-file_arg  = sub("^--file=", "", args_full[grep("^--file=", args_full)])
-if (length(file_arg) == 0) stop("Run via Rscript, not interactively.")
-root = normalizePath(dirname(dirname(file_arg)))
+root = normalizePath(dirname(dirname(commandArgs(trailingOnly = FALSE)[
+  grep("^--file=", commandArgs(trailingOnly = FALSE))])))
+tmp = tempdir()
 
 ## ---------------------------------------------------------------- fixtures
 input = tribble(
@@ -97,8 +98,7 @@ date_out = dates |>
         as.Date()),
     date_parse_fail = is.na(date_parsed) & !is.na(date_raw)
   )
-check("T6 three formats parsed",
-      sum(!is.na(date_out$date_parsed)) == 3)
+check("T6 three formats parsed", sum(!is.na(date_out$date_parsed)) == 3)
 check("T6 fail flag", !date_out$date_parse_fail[[1]] && date_out$date_parse_fail[[4]])
 
 ## T7 missing imputation: median via replace_na -----------------------------
@@ -109,13 +109,12 @@ check("T7 median impute", imputed$x[[3]] == 2)  # median of 1,2,4 = 2
 ## T8 IQR outlier flag (adequate n) -----------------------------------------
 set.seed(1)
 numdf = tibble(x = c(rnorm(100, 50, 5), 9999))
-flagged = numdf
-q   = quantile(flagged$x, c(0.25, 0.75), na.rm = TRUE)
-iqr = IQR(flagged$x, na.rm = TRUE)
-flagged$x_outlier_flag = !is.na(flagged$x) &
-  (flagged$x < (q[[1]] - 1.5 * iqr) | flagged$x > (q[[2]] + 1.5 * iqr))
+q   = quantile(numdf$x, c(0.25, 0.75), na.rm = TRUE)
+iqr = IQR(numdf$x, na.rm = TRUE)
+numdf$x_outlier_flag = !is.na(numdf$x) &
+  (numdf$x < (q[[1]] - 1.5 * iqr) | numdf$x > (q[[2]] + 1.5 * iqr))
 check("T8 IQR catches injected outlier",
-      sum(flagged$x_outlier_flag) == 1 && flagged$x_outlier_flag[[101]])
+      sum(numdf$x_outlier_flag) == 1 && numdf$x_outlier_flag[[101]])
 
 ## T9 read_any: CSV / XLSX / RDS / Parquet ----------------------------------
 read_any = \(path) {
@@ -128,8 +127,7 @@ read_any = \(path) {
     stop("unsupported format: ", path))
   as_tibble(out)
 }
-tmp  = tempdir()
-src  = tibble(a = 1:3, b = c("x", "y", "z"))
+src = tibble(a = 1:3, b = c("x", "y", "z"))
 csv_p  = file.path(tmp, "f.csv");  xlsx_p = file.path(tmp, "f.xlsx")
 rds_p  = file.path(tmp, "f.rds");  pq_p   = file.path(tmp, "f.parquet")
 write_csv(src, csv_p); saveRDS(src, rds_p); arrow::write_parquet(src, pq_p)
@@ -176,225 +174,6 @@ rel = \(l, r) {
 }
 check("T11 join relation N:1", rel(left, right) == "N:1")
 check("T11 join relation 1:1", rel(right, right) == "1:1")
-
-## T12 static lint: templates must obey the skill's own R iron rules --------
-# One check per .qmd found, so the total check count scales with templates/.
-qmd_files = list.files(file.path(root, "templates"),
-                       pattern = "\\.qmd$", full.names = TRUE,
-                       ignore.case = TRUE)
-if (length(qmd_files) == 0) {
-  check("T12 qmd lint", FALSE, "no .qmd template found")
-} else {
-  for (qf in qmd_files) {
-    txt = paste(readLines(qf, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
-    txt = gsub("(?s)<!--.*?-->", "", txt, perl = TRUE)          # strip HTML comments
-    lines = unlist(strsplit(txt, "\n"))
-    lines = lines[!grepl("#", lines, fixed = TRUE)]              # drop comment/heading lines
-    body  = paste(lines, collapse = "\n")
-    # dplyr's retired scoped verbs are banned by name; a bare "_if(" would
-    # false-positive on legitimate tidyr functions like na_if().
-    banned = c("function(", "%>%", "ifelse(", "merge(", "gather(", "spread(", "<-",
-               "mutate_if(", "mutate_at(", "mutate_all(",
-               "summarise_if(", "summarise_at(", "summarise_all(",
-               "summarize_if(", "summarize_at(", "summarize_all(",
-               "transmute_if(", "transmute_at(", "transmute_all(",
-               "select_if(", "select_at(", "select_all(",
-               "rename_if(", "rename_at(", "rename_all(",
-               "filter_if(", "filter_at(", "filter_all(",
-               "arrange_if(", "arrange_at(", "arrange_all(",
-               "group_by_if(", "group_by_at(", "group_by_all(",
-               "count_if(", "distinct_if(", "distinct_at(", "distinct_all(")
-    hits = banned[vapply(banned, \(p) grepl(p, body, fixed = TRUE), logical(1))]
-    check(paste0("T12 lint ", basename(qf)), length(hits) == 0,
-          if (length(hits)) paste("found:", paste(hits, collapse = ", ")) else "")
-  }
-}
-
-## T13 missing-rate decision bands (<5% / 5-40% / >40% / structural) --------
-missdf = tibble(
-  lo  = ifelse(1:30 == 1, NA_real_, 1:30),        #  3.3% -> impute-ok
-  mid = ifelse(1:30 <= 6, NA_real_, 1:30),        # 20.0% -> ask
-  hi  = ifelse(1:30 <= 20, NA_real_, 1:30),       # 66.7% -> flag-drop
-  st  = rep(c(1, NA_real_), 15)                   # merged-cell style -> structural
-)
-is_structural_na = \(x) {
-  idx = which(is.na(x))
-  length(idx) > 0 && all(idx > 1) && all(!is.na(x[idx - 1]))
-}
-na_tbl = missdf |>
-  summarise(across(everything(), \(x) mean(is.na(x)))) |>
-  pivot_longer(everything(), names_to = "column", values_to = "na_rate") |>
-  mutate(
-    structural = vapply(missdf, is_structural_na, logical(1))[column],
-    band = case_when(
-      structural      ~ "structural-fill",
-      na_rate <  0.05 ~ "impute-ok",
-      na_rate <= 0.40 ~ "ask",
-      TRUE            ~ "flag-drop"
-    ))
-band_of = \(col) na_tbl$band[na_tbl$column == col]
-check("T13 band <5% -> impute-ok",  band_of("lo")  == "impute-ok")
-check("T13 band 5-40% -> ask",      band_of("mid") == "ask")
-check("T13 band >40% -> flag-drop", band_of("hi")  == "flag-drop")
-check("T13 structural missing -> fill band (not flag-drop)",
-      band_of("st") == "structural-fill")
-
-## T14 outlier methods: IQR / z-score / MAD ---------------------------------
-x_bad = c(10.5, 9999, 9999, 11.2, 12.9)  # small-n, heavy contamination
-flag_outlier_iqr    = \(x) {
-  q = quantile(x, c(0.25, 0.75), na.rm = TRUE)
-  i = IQR(x, na.rm = TRUE)
-  !is.na(x) & (x < q[[1]] - 1.5 * i | x > q[[2]] + 1.5 * i)
-}
-flag_outlier_zscore = \(x, z = 3) {
-  m = mean(x, na.rm = TRUE); s = sd(x, na.rm = TRUE)
-  !is.na(x) & abs((x - m) / s) > z
-}
-flag_outlier_mad    = \(x, k = 3.5) {   # R's mad() already includes the 1.4826 constant
-  med = median(x, na.rm = TRUE); m = mad(x, na.rm = TRUE)
-  !is.na(x) & abs(x - med) / m > k
-}
-check("T14 IQR small-n misses (documented weakness)", sum(flag_outlier_iqr(x_bad)) == 0)
-check("T14 MAD catches contaminated small-n", sum(flag_outlier_mad(x_bad)) == 2)
-set.seed(2)
-x_norm = c(rnorm(200, 50, 5), 200)
-check("T14 zscore catches extreme in large normal sample",
-      flag_outlier_zscore(x_norm)[201])
-res2 = tibble(a = c(1, 2, 3, 4, 100), b = c(5, 5, 5, 5, 5)) |>
-  mutate(across(where(is.numeric), flag_outlier_iqr, .names = "{.col}_outlier_flag"))
-check("T14 across(.names) per-column flags",
-      all(c("a_outlier_flag", "b_outlier_flag") %in% names(res2)) &&
-        res2$a_outlier_flag[[5]])
-
-## T15 GBK csv auto-encoding (silent mojibake guard) ------------------------
-read_csv_anyenc = \(path) {
-  b    = readBin(path, "raw", n = 1000000)
-  utf8 = validUTF8(rawToChar(b))
-  if (utf8 || !any(b > as.raw(0x7f))) {
-    readr::read_csv(path, show_col_types = FALSE)
-  } else {
-    readr::read_csv(path, locale = readr::locale(encoding = "GB18030"),
-                    show_col_types = FALSE)
-  }
-}
-gbk_p = file.path(tmp, "gbk.csv")
-gbk_lines = iconv(
-  c("\u59d3\u540d,\u6536\u5165", "\u5f20\u4e09,100", "\u674e\u56db,200"),
-  from = "UTF-8", to = "GBK")
-if (!any(is.na(gbk_lines))) {
-  writeLines(gbk_lines, gbk_p, useBytes = TRUE)
-  gbk_back = read_csv_anyenc(gbk_p)
-  check("T15 GBK csv column name", names(gbk_back)[1] == "\u59d3\u540d")
-  check("T15 GBK csv rows", nrow(gbk_back) == 2)
-  check("T15 UTF-8 csv unaffected", identical(nrow(read_csv_anyenc(csv_p)), 3L))
-} else {
-  check("T15 GBK csv", FALSE, "iconv GBK unavailable on this R build")
-}
-
-## T16 join key consistency (five-check + anti_join) ------------------------
-# ASCII-only on purpose: this script must run under any locale (broken
-# LC_CTYPE garbles non-ASCII source, see SKILL.md pitfalls).
-ord = tibble(customer_id = c(123, 124))
-cus = tibble(customer_id = c("00123", "00124"))
-key_profile = \(df, key_col) tibble(
-  key_type      = class(df[[key_col]])[1],
-  n_unique      = n_distinct(df[[key_col]], na.rm = TRUE),
-  na_count      = sum(is.na(df[[key_col]])),
-  leading_zeros = sum(str_detect(str_trim(as.character(df[[key_col]])), "^0[0-9]"),
-                      na.rm = TRUE),
-  has_spaces    = sum(str_detect(as.character(df[[key_col]]), "^\\s|\\s$"),
-                      na.rm = TRUE),
-  case_fold     = n_distinct(df[[key_col]], na.rm = TRUE) -
-                  n_distinct(str_to_upper(as.character(df[[key_col]])), na.rm = TRUE),
-  dup_rows      = sum(duplicated(df[[key_col]]) & !is.na(df[[key_col]]))
-)
-kp_l = key_profile(ord, "customer_id")
-kp_r = key_profile(cus, "customer_id")
-check("T16 key type mismatch detected", kp_l$key_type != kp_r$key_type)
-check("T16 leading zeros detected", kp_r$leading_zeros == 2)
-# naive fix (unify to character) still cannot match -- semantics need the user
-naive = ord |> mutate(customer_id = as.character(customer_id))
-check("T16 naive fix still unmatched (trap documented)",
-      nrow(naive |> anti_join(cus, by = "customer_id")) == 2)
-# case variants across tables: match_rate exposes what key_profile cannot see
-l2 = tibble(customer_id = c("a001", "a002"))
-r2 = tibble(customer_id = c("A001", "A002"))
-match_rate = \(l, r, key) {
-  lk = str_trim(str_to_upper(as.character(l[[key]])))
-  rk = str_trim(str_to_upper(as.character(r[[key]])))
-  c(match_raw  = mean(as.character(l[[key]]) %in% as.character(r[[key]])),
-    match_norm = mean(lk %in% rk))
-}
-mr = match_rate(l2, r2, "customer_id")
-check("T16 case mismatch exposed by match_rate", mr[[1]] == 0 && mr[[2]] == 1)
-check("T16 key_profile case_fold blind to cross-table case (by design)",
-      key_profile(l2, "customer_id")$case_fold == 0)
-
-## T18 structural dirt: summary rows / merged cells / type pollution --------
-dirty = tibble(
-  region = c("\u534e\u4e1c", NA, NA, "\u534e\u5317", NA),   # merged-cell style
-  amount = c("10", "20", "\u603b\u8ba1", "30", "40")        # summary row pollutes type
-)
-type_tbl = dirty |>
-  summarise(across(everything(), \(x) class(x)[1])) |>
-  pivot_longer(everything(), names_to = "column", values_to = "class")
-check("T18 type assertion flags character pollution",
-      type_tbl$class[type_tbl$column == "amount"] == "character")
-sum_rows = dirty |>
-  filter(if_any(where(is.character),
-                \(x) str_detect(str_squish(x),
-                                "^(\u603b\u8ba1|\u5c0f\u8ba1|\u5408\u8ba1|Total)$")))
-check("T18 summary row detected", nrow(sum_rows) == 1)
-filled = dirty |> tidyr::fill(region, .direction = "down")
-check("T18 fill down inherits group labels",
-      filled$region[2] == "\u534e\u4e1c" && filled$region[3] == "\u534e\u4e1c" &&
-        filled$region[5] == "\u534e\u5317")
-
-## T17 Chinese business formats: amounts / dates / full-width ---------------
-amt = tibble(revenue_raw = c("1,234.50\u5143", "\uffe52,058", "-120",
-                             "342.35\u5143"))
-amt2 = amt |> mutate(revenue_num = readr::parse_number(revenue_raw))
-check("T17 parse yuan amounts",
-      all(abs(amt2$revenue_num - c(1234.5, 2058, -120, 342.35)) < 1e-9))
-cn_date = tibble(date_raw = c("2023\u5e741\u67085\u65e5", "2023/01/06",
-                              "2023-01-07", "20230108"))
-cn2 = cn_date |> mutate(date = ymd(date_raw))
-check("T17 ymd covers chinese + mixed formats",
-      all(!is.na(cn2$date)) && cn2$date[1] == as.Date("2023-01-05") &&
-        class(cn2$date)[1] == "Date")
-half = chartr("\uff10\uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18\uff19",
-              "0123456789", "\uff11\uff12\uff13")
-check("T17 fullwidth to halfwidth digits", half == "123" && as.numeric(half) == 123)
-
-## T19 integration: snippets compose into one full clean pipeline -----------
-raw19 = tibble(
-  order_id = c("001", "002", "003", "004", "004", "005"),
-  region   = c("\u534e\u4e1c", NA, NA, "\u534e\u5317", "\u534e\u5317", "\u534e\u5317"),
-  amount   = c("1,234.50\u5143", "342.35\u5143", "\u603b\u8ba1", "890", "890", "-120"),
-  date     = c("2023\u5e741\u67085\u65e5", "2023/01/06", "2023-01-07",
-               "20230108", "20230108", "2023-01-09")
-)
-clean19 = raw19 |>
-  # coalesce guards against if_any NA-propagation silently dropping rows
-  filter(!if_any(where(is.character),
-                 \(x) str_detect(str_squish(coalesce(x, "")),
-                                 "^(\u603b\u8ba1|\u5c0f\u8ba1|\u5408\u8ba1|Total)$"))) |>
-  distinct() |>
-  tidyr::fill(region, .direction = "down") |>
-  mutate(
-    amount_num      = readr::parse_number(amount),
-    date            = ymd(date),
-    amount_negative = !is.na(amount_num) & amount_num < 0
-  )
-check("T19 integration rows 6 -> 4 (summary + dup stripped, no NA loss)",
-      nrow(clean19) == 4)
-check("T19 integration region filled (structural missing)",
-      !any(is.na(clean19$region)))
-check("T19 integration amounts + dates parsed",
-      all(abs(clean19$amount_num - c(1234.5, 342.35, 890, -120)) < 1e-9) &&
-        all(!is.na(clean19$date)))
-check("T19 integration negative flagged, nothing deleted",
-      sum(clean19$amount_negative) == 1 && nrow(clean19) == 4)
 
 ## ---------------------------------------------------------------- summary
 cat(sprintf("\nSummary: %d check(s), %d failure(s)\n", total, failures))

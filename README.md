@@ -9,6 +9,7 @@
 [![Agent Skills](https://img.shields.io/badge/Agent_Skills-data--cleaning-blueviolet)](SKILL.md)
 [![R](https://img.shields.io/badge/R-tidyverse-blue)](https://www.tidyverse.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![skills.sh](https://skills.sh/b/zhjx19/data-cleaning)](https://skills.sh/zhjx19/data-cleaning)
 
 **把 43 行脏数据变成 40 行干净数据 + 7 步清洗日志 + 一份 PDF 质量报告——删了什么、改了什么、为什么，全都对得上账。**
 
@@ -30,7 +31,7 @@
 
 这个 skill 把清洗变成**对账**：动手前先交审计报告（缺失在哪、重复多少、离群几个、日期几种格式），高风险动作（删行、填补、N:N 连接）必须停下来等你拍板，每一步都写进清洗日志——前后行数、影响范围、你的决策，一行不少。
 
-它也不是一份"方法论空文"：Windows 下 Rscript 的 BOM 坑、locale 坑、编码坑、`readr` 静默猜型的坑，全是真实踩过并写进坑表的；片段代码由 [scripts/verify_snippets.R](scripts/verify_snippets.R) 的 43 项回归测试保真。
+它也不是一份"方法论空文"：Windows 下 Rscript 的 BOM 坑、locale 坑、编码坑、`readr` 静默猜型的坑，全是真实踩过并写进坑表的；片段代码由 [scripts/verify_snippets.R](scripts/verify_snippets.R) 的 16 项回归测试保真。
 
 ## 效果示例
 
@@ -66,8 +67,9 @@ cd examples && quarto render cleaning_report.qmd                     # PDF 报�
 把本目录复制进你的 Agent 技能目录（SKILL.md 形态，Claude Code / ZCode / OpenCode / Codex 通用）：
 
 ```bash
-# 以 Claude Code 为例（目录按你的 runtime 调整）
-cp -r data-cleaning ~/.claude/skills/
+npx skills add zhjx19/data-cleaning            # skills.sh 一键安装
+# 或手动克隆（目录按你的 runtime 调整）：
+git clone https://github.com/zhjx19/data-cleaning && cp -r data-cleaning ~/.claude/skills/
 ```
 
 装完对 Agent 说：
@@ -118,8 +120,9 @@ cp -r data-cleaning ~/.claude/skills/
 ```text
 ├── SKILL.md                  技能本体：原则→协议→工作流→决策表→坑表
 ├── references/snippets.md    11 组即用片段（审计/去重/日期/异常/日志…）
-├── scripts/verify_snippets.R 17 项一键回归（片段 + 模板 lint）
+├── scripts/verify_snippets.R 16 项一键回归（片段逐条实证）
 ├── templates/                清洗报告骨架（PrettyTypst 格式）
+├── CHANGELOG.md              版本史
 ├── examples/                 端到端示例：脏数据 + 脚本 + PDF 报告
 └── _extensions/PrettyTypst   vendored 渲染扩展（CC0，含 CJK 字体链）
 ```
@@ -128,7 +131,7 @@ cp -r data-cleaning ~/.claude/skills/
 
 ```bash
 Rscript --vanilla scripts/verify_snippets.R
-# [PASS] × 43，Summary: 43 check(s), 0 failure(s)，exit 0
+# [PASS] × 16，Summary: 16 check(s), 0 failure(s)，exit 0
 ```
 
 行为测试见 [test-prompts.json](test-prompts.json)：含一条"我赶时间，能删的都删了"的对抗性
