@@ -187,6 +187,7 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, pretty = FALSE, force = TRUE))
 | 中文乱码 | 任一环节用了非 UTF-8（如 PowerShell `Out-File` 默认编码）；全程 UTF-8 无 BOM |
 | `.qmd` 渲染失败/R chunk 报 `unexpected '<'`（代码里出现 `<U+XXXX>`） | Git Bash 的 `LC_CTYPE=C.UTF-8` 使 R 启动 locale 切换失败，knitr 把 chunk 内中文转义；`env -u LC_CTYPE -u LANG -u LC_ALL quarto render` 或改用 PowerShell/cmd |
 | `.qmd` 渲染失败/解析 YAML 失败 | `.qmd` 也带 BOM；`.R` 与 `.qmd` 写完后都剥 BOM 再 `quarto render` |
+| `quarto render` 报 `Unable to read the extension` | PrettyTypst 扩展缺失（SkillHub 分发包不含二进制）：把 GitHub 仓库的 `_extensions/` 整个复制到报告工作目录，或联网 `quarto install extension nrennie/PrettyTypst` |
 | "font family not found" / ggplot2 中文变方块 | 图形设备缺 CJK 字体：不要给 `theme(base_family=...)` 强加中文字体；用系统默认即可，需中文字体时用 `Sys.setlocale`/`showtext` 或 PNG 设备 |
 | `(p1) \| (p2)` 报错 | 需 `patchwork`（常未装）；双图并排用 `gridExtra::grid.arrange(p1, p2, ncol = 2)` |
 | `list.files()` 找不到明知存在的文件 | locale 非 UTF-8 时（R 启动报 `Setting LC_CTYPE=C.UTF-8 failed`）中文文件名条目被静默丢弃；脚本/模板一律用 ASCII 文件名，或改用 `file.exists()`/`Sys.glob()` 定位 |
