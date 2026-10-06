@@ -1,0 +1,12 @@
+{
+  "focus": "join_nn_leading_zero",
+  "key": "customer_id",
+  "relationship": "N:N",
+  "leading_zero_rows": {
+    "orders": 12,
+    "customers": 0
+  },
+  "match_raw": 0,
+  "match_norm": 0,
+  "must_pause": ["relationship is N:N -- stop; aggregate/dedupe/add a key before joining", "leading zeros on orders' key: is 001 the same entity as 1? ask the user"]
+}

@@ -1,0 +1,101 @@
+id,region,channel,score,note,amount
+R-001,east,search,10,,120.5
+R-002,west ,social ,20,note-2,45
+R-003,North ,Email,30,,300.25
+R-004,South,Search,40,note-4,88
+R-005,EAST,SOCIAL,NA,,120.5
+R-006,West,Email,60,note-6,45
+R-007,NORTH,SEARCH ,70,note-7,300.25
+R-008,South,Social,80,note-8,88
+R-009,east,email,10,note-9,120.5
+R-010,West,Search,NA,,45
+R-011,N/A ,Social,NA,note-11,300.25
+R-012,South ,Email,NA,,88
+R-013,East,Search,50,note-13,120.5
+R-014,West ,Social,60,,45
+R-015,North,Email ,NA,,300.25
+R-016,south,search,NA,note-16,88
+R-017,east ,social,NA,note-17,120.5
+R-018,N/A ,Email,20,note-18,45
+R-019,NORTH,SEARCH,NA,,300.25
+R-020,N/A,Social,40,,88
+R-021,East ,Email ,NA,note-21,120.5
+R-022,WEST ,SEARCH,60,,45
+R-023,North,Social,70,note-23,300.25
+R-024,South,Email ,80,note-24,88
+R-025,east,search,10,note-25,120.5
+R-026,West,Social,NA,,45
+R-027,north,email ,NA,note-27,300.25
+R-028,South,Search ,NA,,88
+R-029,n/a,social,50,note-29,120.5
+R-030,West,Email ,NA,note-30,45
+R-031,north,search,70,note-31,300.25
+R-032,South,Social ,80,,88
+R-033,East,Email,10,note-33,120.5
+R-034,N/A,Search,20,,45
+R-035,North,NA ,30,,300.25
+R-036,South ,Email ,NA,,88
+R-037,East,Search,NA,note-37,120.5
+R-038,West ,Social,60,,45
+R-039,North ,Email,70,,300.25
+R-040,South ,Search,80,,88
+R-041,EAST ,SOCIAL,10,,120.5
+R-042,West,Email ,20,note-42,45
+R-043,North ,Search,30,,300.25
+R-044,South,Social ,40,,88
+R-045,East,Email,50,,120.5
+R-046,WEST ,SEARCH ,60,,45
+R-047,North,Social,NA,,300.25
+R-048,South,Email ,NA,note-48,88
+R-049,East ,Search,10,note-49,120.5
+R-050,west,social ,20,,45
+R-051,North ,Email ,30,,300.25
+R-052,south,search,40,note-52,88
+R-053,East,Social,50,note-53,120.5
+R-054,West,Email,NA,note-54,45
+R-055,North,Search ,70,,300.25
+R-056,South,Social,80,,88
+R-057,east,email,10,note-57,120.5
+R-058,WEST,SEARCH,20,,45
+R-059,North,Social,30,,300.25
+R-060,south ,email,40,note-60,88
+R-061,east,search ,50,,120.5
+R-062,West,Social,60,note-62,45
+R-063,north,email,70,,300.25
+R-064,South ,Search,NA,note-64,88
+R-065,EAST ,SOCIAL,10,note-65,120.5
+R-066,West,Email ,20,note-66,45
+R-067,North,Search,30,note-67,300.25
+R-068,South,Social,40,note-68,88
+R-069,East ,Email ,50,note-69,120.5
+R-070,West,Search ,60,note-70,45
+R-071,north,social ,NA,,300.25
+R-072,South,Email ,NA,note-72,88
+R-073,East,Search,10,,120.5
+R-074,West ,Social,20,note-74,45
+R-075,North,Email,30,,300.25
+R-076,South,Search,40,,88
+R-077,East,Social,50,,120.5
+R-078,west,email,NA,note-78,45
+R-079,North,Search ,70,note-79,300.25
+R-080,SOUTH,SOCIAL ,80,,88
+R-081,East,Email,10,,120.5
+R-082,West,Search ,20,note-82,45
+R-083,NORTH,SOCIAL,30,note-83,300.25
+R-084,SOUTH,EMAIL,40,note-84,88
+R-085,EAST,SEARCH,NA,,120.5
+R-086,west,social,NA,,45
+R-087,North,Email,70,,300.25
+R-088,SOUTH,SEARCH ,80,note-88,88
+R-089,East,Social,NA,note-89,120.5
+R-090,WEST,EMAIL,20,,45
+R-091,North ,Search,30,,300.25
+R-092,South,Social ,40,,88
+R-093,East,Email,50,note-93,120.5
+R-094,west,search,60,,45
+R-095,North ,Social,70,note-95,300.25
+R-096,SOUTH,EMAIL,80,,88
+R-097,East,Search,NA,,120.5
+R-098,West,Social,20,,45
+R-099,NORTH,EMAIL,30,,300.25
+R-100,SOUTH ,SEARCH,40,note-100,88

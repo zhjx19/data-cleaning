@@ -4,17 +4,59 @@
 > 所有片段遵守 R 铁律（`=`、`|>`、`\(x)`、`.by`、禁 `ifelse`/`merge`）；
 > `input` 均指 R 执行协议固定模板中从 JSON 读入的 tibble。
 
-## 审计：结构 + 缺失 + 重复 + 异常值
+## 共用探针：缺失伪装 + 解析问题（审计与清洗**共用这一份定义**）
+
+> **缺失伪装**不止空串。导出系统爱写字面量：`N/A`、`NA`、`NULL`、`-`、`?`——它们不是 `NA`，
+> 会被当成一个合法类别混进去，而且 **`is.na()` 一个都认不出来**。
+>
+> 审计与清洗必须用**同一份清单**；分开写两份迟早漂移。本文件只有这一处定义，其余片段引用它。
+>
+> **解析问题**同理：`readr` 的解析失败只发一条 stderr warning，不进 stdout JSON，Agent 等于没看见。
+
+```r
+na_markers    = c("", "N/A", "NA", "NULL", "NIL", "-", "--", "?", ".")
+count_missing = \(x) sum(is.na(x) |
+                         toupper(stringr::str_squish(as.character(x))) %in% toupper(na_markers))
+to_na = \(x) {
+  x = stringr::str_squish(x)
+  x[toupper(x) %in% toupper(na_markers)] = NA_character_
+  x
+}
+
+# 解析问题：readr 把 problems 挂在属性上，而 as_tibble() 会把它丢掉（实测丢）
+safe_problems = \(x) tryCatch(nrow(readr::problems(x)), error = \(e) 0L)
+parse_problems_of = \(x) {
+  pp = attr(x, "parse_problems")     # 由 read_any() 在 as_tibble() 之后挂回
+  if (is.null(pp)) safe_problems(x) else pp
+}
+```
+
+> 缺 `stringr` 时用 base `trimws()` 降级；`to_na()` 对已经是 `NA` 的值不误伤。
+
+## 审计：结构 + 缺失（含伪装）+ 重复 + 解析问题
+
+> **缺失要数"真缺失"。** 只数 `is.na()` 会让缺失率偏小，**把三档线判到错档**——实测：一列真缺失
+> 5%（写成字面量 `N/A`）被报成 0%，从「保留并询问」翻成「可填补」。`disguised` 列专列伪装格数，
+> 大于 0 就说明该列有字面量缺失。
+>
+> **解析问题必须报出来。** `readr` 的解析失败只发一条 stderr warning；Agent 只看 stdout JSON，
+> 等于没看见——`parse_problems` 把 `problems()` 计数带进审计摘要。
 
 ```r
 result = list(
   shape = list(rows = nrow(input), cols = ncol(input)),
-  missing = input |>
-    summarise(across(everything(), \(x) sum(is.na(x)))) |>
-    pivot_longer(everything(), names_to = "column", values_to = "na_count") |>
-    mutate(na_pct = round(na_count / nrow(input) * 100, 2)) |>
+  missing = tibble(
+    column   = names(input),
+    na_count = map_int(input, count_missing),
+    na_naive = map_int(input, \(x) sum(is.na(x)))
+  ) |>
+    mutate(
+      na_pct    = round(na_count / nrow(input) * 100, 2),
+      disguised = na_count - na_naive
+    ) |>
     arrange(desc(na_count)),
-  duplicate_rows = sum(duplicated(input))
+  duplicate_rows = sum(duplicated(input)),
+  parse_problems = parse_problems_of(input)
 )
 ```
 
@@ -38,12 +80,26 @@ result = input |>
 
 > 若用户环境缺 `janitor`，先询问是否安装，或退回手写列名清洗。
 
-## 文本标准化（需 `stringr`）
+## 清洗顺序铁律（缺失 → 格式 → 再标准化）
+
+> **先统一缺失标记（`to_na()`，清单见上方「缺失伪装清单」），再动格式。** 反过来的话，
+> 去特殊字符/去单位的动作会先把 `"N/A"` 剥成 `"NA"`，其后 `na_if("N/A")` 再也匹配不上——
+> 那一格既不进 `NA`、也不属于任何合法类别，**不报错、行数不变，只有拿真值对账才现形**。
+>
+> 顺序：`to_na()` → 去特殊字符/去单位 → 再 `str_squish()`。
+
+## 文本标准化（需 `stringr`，排在缺失统一之后）
+
+> 去特殊字符 / 去单位这类动作常留下**新的空白**（`"_so)ut*h "` → `"south "`），
+> 清理完必须再过一次 `str_squish()`——漏掉它，同一类值会因尾随空格分不到一组。
 
 ```r
-result = input |>
-  mutate(across(where(is.character), \(x) stringr::str_squish(x))) |>
-  mutate(across(where(is.character), \(x) na_if(x, "")))
+result = result |>
+  mutate(across(where(is.character), \(x) stringr::str_squish(x)))
+
+# 需要去特殊字符（模拟导出/OCR 污染）时，清理后再补一次 squish：
+#   mutate(across(where(is.character),
+#                 \(x) stringr::str_remove_all(x, "[^A-Za-z]") |> stringr::str_squish()))
 ```
 
 > 缺 `stringr` 时用 base `trimws()` 降级。
@@ -210,7 +266,12 @@ read_any = \(path) {
     rds     = readRDS(path),
     parquet = arrow::read_parquet(path),
     stop("不支持格式: ", path))
-  as_tibble(out)
+  # as_tibble() 会丢掉 readr 的 problems 属性——先取出、转完再挂回；否则审计里的
+  # parse_problems 永远是 0（静默），解析失败就没人知道
+  pp  = safe_problems(out)
+  out = as_tibble(out)
+  attr(out, "parse_problems") = pp
+  out
 }
 left  = read_any("data/orders.xlsx")
 right = read_any("data/customers.parquet")
@@ -302,16 +363,24 @@ key_profile(right, "customer_id")
 ```
 
 > `大小写折叠差 > 0` = 本表内部就有 a001/A001 并存。**跨表**的大小写/空格不一致
-> （两表各自内部一致、互相对不上）用下面的 `match_rate` 对比抓：
+> （两表各自内部一致、互相对不上）用下面的 `match_rate` 对比抓。
+> 三个口径一起看，才能定位"对不上"的成因（归一化**不含**前导零——那是口径问题，不是格式问题）：
 
 ```r
 match_rate = \(l, r, key) {
-  lk = str_trim(str_to_upper(as.character(l[[key]])))
-  rk = str_trim(str_to_upper(as.character(r[[key]])))
-  c(match_raw  = mean(as.character(l[[key]]) %in% as.character(r[[key]])),
-    match_norm = mean(lk %in% rk))
+  raw      = as.character(l[[key]])
+  raw_r    = as.character(r[[key]])
+  norm     = str_trim(str_to_upper(raw))
+  norm_r   = str_trim(str_to_upper(raw_r))
+  nolead   = str_remove(norm,   "^0+(?=\\d)")   # 只削"后面还有数字"的前导零，保住 0 本身
+  nolead_r = str_remove(norm_r, "^0+(?=\\d)")
+  c(match_raw    = mean(raw %in% raw_r),
+    match_norm   = mean(norm %in% norm_r),
+    match_nolead = mean(nolead %in% nolead_r))
 }
-# match_norm > match_raw → 大小写/空格不一致实锤：统一后重连（口径问用户）
+# match_norm   > match_raw        → 大小写/空格不一致实锤：统一后重连（口径问用户）
+# match_nolead > match_raw        → 前导零口径问题：001 与 1 是否同一实体，必须问用户
+# 三者都相等且为 0                → 不是键格式问题，回五查看类型/取值范围
 ```
 
 ### 连接后验证（双向未匹配 + 膨胀 + 抽样核对）

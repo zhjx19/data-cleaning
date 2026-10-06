@@ -1,0 +1,39 @@
+{
+  "focus": "missing_bands",
+  "rows": 100,
+  "missing_pct_true": {
+    "id": 0,
+    "region": 5,
+    "channel": 1,
+    "score": 26,
+    "note": 51,
+    "amount": 0
+  },
+  "missing_pct_naive": {
+    "id": 0,
+    "region": 0,
+    "channel": 1,
+    "score": 26,
+    "note": 51,
+    "amount": 0
+  },
+  "band_true": {
+    "id": "impute-ok",
+    "region": "ask",
+    "channel": "impute-ok",
+    "score": "ask",
+    "note": "flag-drop",
+    "amount": "impute-ok"
+  },
+  "band_naive": {
+    "id": "impute-ok",
+    "region": "impute-ok",
+    "channel": "impute-ok",
+    "score": "ask",
+    "note": "flag-drop",
+    "amount": "impute-ok"
+  },
+  "band_flip": "region",
+  "must_pause": ["note: 49% (>40%) -- do not impute, do not drop; list for user decision", "score: 34% (5-40%) -- keep NA, report and ask"],
+  "trap": "region's missingness is the literal N/A / n/a: is.na() alone reports 0%, flipping the band to impute-ok"
+}

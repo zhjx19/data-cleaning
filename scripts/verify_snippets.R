@@ -175,6 +175,144 @@ rel = \(l, r) {
 check("T11 join relation N:1", rel(left, right) == "N:1")
 check("T11 join relation 1:1", rel(right, right) == "1:1")
 
+## T12 missing-marker unification must precede format cleanup ----------------
+# Documented pitfall: a format pass that strips non-letters rewrites the
+# literal "N/A" into "NA", so a later na_if("N/A") silently misses it -- no
+# error, no row-count change, one missing cell becomes a fake category.
+markers = tibble(
+  id     = 1:6,
+  region = c(" E#ast ", "N/A", "NA", "", "West", "-")
+)
+
+# (a) WRONG order: format cleanup first -> the literal survives as "NA"
+wrong = markers |>
+  mutate(region = stringr::str_remove_all(region, "[^A-Za-z]") |>
+           stringr::str_squish()) |>
+  mutate(region = na_if(region, "") |> na_if("N/A"))
+check("T12 wrong order silently misses the marker",
+      wrong$region[wrong$id == 2] == "NA" && !is.na(wrong$region[wrong$id == 2]))
+
+# (b) RIGHT order: unify missing markers first, then clean the format
+na_markers = c("", "N/A", "NA", "NULL", "NIL", "-", "--", "?", ".")
+to_na = \(x) {
+  x = stringr::str_squish(x)
+  x[toupper(x) %in% toupper(na_markers)] = NA_character_
+  x
+}
+right = markers |>
+  mutate(region = to_na(region)) |>
+  mutate(region = stringr::str_remove_all(region, "[^A-Za-z]") |>
+           stringr::str_squish() |>
+           stringr::str_to_title())
+check("T12 right order unifies every missing marker",
+      all(is.na(right$region[right$id %in% c(2, 3, 4, 6)])) &&
+        right$region[right$id == 1] == "East" &&
+        right$region[right$id == 5] == "West")
+
+## T13 audit must count disguised missing + surface parse problems -----------
+# Documented pitfall: is.na() reports 0% for a column whose missingness is the
+# literal "N/A" / "n/a" -- small enough to flip the three-band decision.
+na_markers    = c("", "N/A", "NA", "NULL", "NIL", "-", "--", "?", ".")
+count_missing = \(x) sum(is.na(x) |
+                         toupper(stringr::str_squish(as.character(x))) %in% toupper(na_markers))
+safe_problems = \(x) tryCatch(nrow(readr::problems(x)), error = \(e) 0L)
+parse_problems_of = \(x) {
+  pp = attr(x, "parse_problems")
+  if (is.null(pp)) safe_problems(x) else pp
+}
+
+audit_fx = tibble(id     = 1:20,
+                  region = c(rep("East", 18), "N/A", "n/a"),
+                  note   = c(rep("ok", 19), NA))
+miss = tibble(
+  column   = names(audit_fx),
+  na_count = map_int(audit_fx, count_missing),
+  na_naive = map_int(audit_fx, \(x) sum(is.na(x)))
+) |>
+  mutate(disguised = na_count - na_naive)
+check("T13 disguised missing counted",
+      miss$na_count[miss$column == "region"] == 2 &&
+        miss$na_naive[miss$column == "region"] == 0 &&
+        miss$disguised[miss$column == "region"] == 2)
+
+bad_csv = file.path(tmp, "t13_problems.csv")
+writeLines(c("a,b", "1,2", "2,3", "x,4"), bad_csv)
+forced = readr::read_csv(bad_csv, col_types = readr::cols(a = readr::col_double()),
+                         show_col_types = FALSE)
+check("T13 parse problems surfaced", safe_problems(forced) == 1)
+
+# as_tibble() drops readr's problems attribute -> read_any() must carry it across
+carried = as_tibble(forced)
+attr(carried, "parse_problems") = safe_problems(forced)
+check("T13 read layer carries parse problems across as_tibble()",
+      is.null(attr(as_tibble(forced), "problems")) && parse_problems_of(carried) == 1)
+
+## T14 match_rate must expose the leading-zero cause -------------------------
+# Documented pitfall: normalisation only trims/cases, so a zero-padded key
+# gives match_raw == match_norm == 0 and the real cause gets ruled out.
+match_rate3 = \(l, r, key) {
+  raw      = as.character(l[[key]])
+  raw_r    = as.character(r[[key]])
+  norm     = stringr::str_trim(stringr::str_to_upper(raw))
+  norm_r   = stringr::str_trim(stringr::str_to_upper(raw_r))
+  nolead   = stringr::str_remove(norm,   "^0+(?=\\d)")
+  nolead_r = stringr::str_remove(norm_r, "^0+(?=\\d)")
+  c(match_raw    = mean(raw %in% raw_r),
+    match_norm   = mean(norm %in% norm_r),
+    match_nolead = mean(nolead %in% nolead_r))
+}
+mr = match_rate3(tibble(k = c("001", "002", "003")),
+                 tibble(k = c("1", "2", "3")), "k")
+check("T14 leading-zero cause exposed",
+      mr[["match_raw"]] == 0 && mr[["match_norm"]] == 0 && mr[["match_nolead"]] == 1)
+check("T14 meaningful zeros kept",
+      stringr::str_remove("001002", "^0+(?=\\d)") == "1002" &&
+        stringr::str_remove("1002", "^0+(?=\\d)") == "1002" &&
+        stringr::str_remove("0", "^0+(?=\\d)") == "0")
+
+## T15 corpus: the audit must meet each instance's expected.json ------------
+# The corpus is the end-to-end target: the snippets must satisfy the fixtures,
+# and expected.json is DERIVED from the files -- so drift on either side fails.
+corpus = file.path(root, "examples", "messy_corpus")
+if (dir.exists(corpus) && requireNamespace("jsonlite", quietly = TRUE)) {
+  rd_inst  = \(d, f) readr::read_csv(file.path(corpus, d, f), show_col_types = FALSE)
+  exp_inst = \(d) jsonlite::fromJSON(file.path(corpus, d, "expected.json"))
+  rel_of   = \(l, r, k) {
+    ld = l |> count(.data[[k]]) |> filter(n > 1)
+    rd = r |> count(.data[[k]]) |> filter(n > 1)
+    dplyr::case_when(
+      nrow(ld) == 0 & nrow(rd) == 0 ~ "1:1",
+      nrow(ld) > 0  & nrow(rd) == 0 ~ "N:1",
+      nrow(ld) == 0 & nrow(rd) > 0  ~ "1:N",
+      TRUE ~ "N:N")
+  }
+
+  e1 = exp_inst("inst1_missing_bands")
+  d1 = rd_inst("inst1_missing_bands", "dirty.csv")
+  check("T15 inst1 disguised missing + band flip match expected.json",
+        count_missing(d1$region) == round(e1$missing_pct_true$region / 100 * nrow(d1)) &&
+          count_missing(d1$region) > sum(is.na(d1$region)) &&
+          length(e1$band_flip) > 0)
+
+  e2  = exp_inst("inst2_join_nn")
+  o2  = rd_inst("inst2_join_nn", "orders.csv")
+  c2  = rd_inst("inst2_join_nn", "customers.csv")
+  mr2 = match_rate3(o2, c2, "customer_id")
+  check("T15 inst2 N:N + leading-zero cause match expected.json",
+        rel_of(o2, c2, "customer_id") == e2$relationship &&
+          mr2[["match_nolead"]] > mr2[["match_raw"]])
+
+  e3 = exp_inst("inst3_gbk_cn")
+  p3 = file.path(corpus, "inst3_gbk_cn", "dirty.csv")
+  b3 = readBin(p3, "raw", n = 1000000)
+  x3 = readr::read_csv(p3, locale = readr::locale(encoding = "GB18030"),
+                       show_col_types = FALSE)
+  check("T15 inst3 non-UTF8 + parse problems match expected.json",
+        !validUTF8(rawToChar(b3)) && safe_problems(x3) == e3$parse_issue_count)
+} else {
+  check("T15 corpus audit", TRUE, "corpus not shipped (SkillHub dist)")
+}
+
 ## ---------------------------------------------------------------- summary
 cat(sprintf("\nSummary: %d check(s), %d failure(s)\n", total, failures))
 if (failures > 0) quit(status = 1)

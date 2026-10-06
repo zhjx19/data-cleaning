@@ -1,0 +1,8 @@
+{
+  "focus": "gbk_chinese_csv",
+  "encoding": "GB18030",
+  "rows": 40,
+  "cols": 5,
+  "parse_issue_count": 40,
+  "must_pause": "none -- but parse issues must be REPORTED, not swallowed by stderr"
+}
