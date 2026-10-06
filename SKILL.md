@@ -10,6 +10,8 @@ description: >-
 related-skills:
   - tidy-data
 compatibility: claude-code, zcode, opencode, codex
+metadata:
+  version: "1.1"
 ---
 
 # data-cleaning：先审计、后清洗、可追溯交付
