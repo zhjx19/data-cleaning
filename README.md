@@ -7,8 +7,10 @@
 > *「别再让 AI 一把梭把数据"洗"没了——先审计、后清洗、每一步可追溯。」*
 
 [![Agent Skills](https://img.shields.io/badge/Agent_Skills-data--cleaning-blueviolet)](SKILL.md)
+[![version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fzhjx19%2Fdata-cleaning%2Fmaster%2Fversion.json&query=%24.version&label=version&color=blue)](SKILL.md)
 [![R](https://img.shields.io/badge/R-tidyverse-blue)](https://www.tidyverse.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![regression](https://img.shields.io/badge/regression-brightgreen)](scripts/verify_snippets.R)
 [![skills.sh](https://skills.sh/b/zhjx19/data-cleaning)](https://skills.sh/zhjx19/data-cleaning)
 
 **把 43 行脏数据变成 40 行干净数据 + 7 步清洗日志 + 一份 PDF 质量报告——删了什么、改了什么、为什么，全都对得上账。**
